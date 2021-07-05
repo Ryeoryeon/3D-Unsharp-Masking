@@ -1,0 +1,10 @@
+/models
+/x64
+/.vs
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.dll
+*.mtl
+*.obj
