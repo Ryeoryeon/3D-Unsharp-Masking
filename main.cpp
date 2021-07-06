@@ -47,12 +47,17 @@ static std::vector<point4> diffuseColors;
 static std::vector<point3> transformedVertices;
 static std::vector<point4> boundingBoxCoordinate;
 
+// 3D Unsharp Masking을 위해
+static std::vector<std::vector<int>> adjNeighborList; // 두 텍스쳐를 위한 인접 리스트
+static std::vector<int> neighborNum; // 각 점에 대한 이웃의 개수를 저장하는 벡터
+static std::vector<int> neighborIdxList; // 이웃의 인덱스가 연속적으로 저장된 벡터
+
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path);
 void init();
 void transform();
 void mydisplay();
 void myreshape(int width, int height);
-bool loadAlbedo(const char* objName, const char* mtlName, int& faceNum);
+bool loadObjMtl(const char* objName, const char* mtlName, int& faceNum);
 
 double boundingBoxDist(point3& boxCent);
 void boundingBox();
@@ -89,7 +94,7 @@ void init()
     const char* mtlName = "model_normalized.mtl";
     
     int faceNum = 0;
-    bool res = loadAlbedo(objName, mtlName, faceNum);
+    bool res = loadObjMtl(objName, mtlName, faceNum);
     boundingBox();
     tripleFace = faceNum * 3;
     //
@@ -421,7 +426,7 @@ void boundingBox()
     }
 }
 
-bool loadAlbedo(const char* objName, const char* mtlName, int &faceNum)
+bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
 {
     // .mtl load
     FILE* fp2;
@@ -538,6 +543,7 @@ bool loadAlbedo(const char* objName, const char* mtlName, int &faceNum)
     std::vector<point3> temp_vertices;
     std::vector<point3> temp_normals;
     int materialPointer = -1; // 넣어야 할 material // -1로 초기화해주는 이유는 예외처리를 위해
+    bool faceReadingStart = false;
 
     while (1)
     {
@@ -698,6 +704,21 @@ bool loadAlbedo(const char* objName, const char* mtlName, int &faceNum)
             normalIndices.push_back(normalIndex[1]);
             normalIndices.push_back(normalIndex[2]);
 
+            if (!faceReadingStart) // 처음으로 face를 읽어올 때, 인접 리스트 크기 초기화
+                adjNeighborList.resize(temp_vertices.size() + 1);
+
+            // 1-ring neiborhood를 위한 인접 리스트 삽입
+
+
+            adjNeighborList[vertexIndex[0]].push_back(vertexIndex[1]);
+            adjNeighborList[vertexIndex[0]].push_back(vertexIndex[2]);
+
+            adjNeighborList[vertexIndex[1]].push_back(vertexIndex[0]);
+            adjNeighborList[vertexIndex[1]].push_back(vertexIndex[2]);
+
+            adjNeighborList[vertexIndex[2]].push_back(vertexIndex[0]);
+            adjNeighborList[vertexIndex[2]].push_back(vertexIndex[1]);
+
             ++faceNum;
         }
 
@@ -719,6 +740,19 @@ bool loadAlbedo(const char* objName, const char* mtlName, int &faceNum)
 
         vertices.push_back(vertex);
         normals.push_back(normal);
+    }
+
+    // 3D Unsharp Masking을 위한 텍스쳐
+    int verticesNum = temp_vertices.size() + 1; // 점은 0번부터 시작하므로 임시 +1
+    neighborNum.assign(verticesNum, 0);
+    int neighborSize;
+
+    for (int i = 0; i < verticesNum; ++i)
+    {
+        neighborSize = adjNeighborList[i].size();
+        neighborNum[i] = neighborSize;
+        for (int j = 0; j < neighborSize; ++j)
+            neighborIdxList.push_back(adjNeighborList[i][j]);
     }
 
     fclose(fp);
