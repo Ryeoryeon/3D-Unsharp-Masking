@@ -90,8 +90,11 @@ void init()
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glGenVertexArrays(1, &VAO);
     // .obj, .mtl 로딩 코드
-    const char* objName = "model_normalized.obj";
-    const char* mtlName = "model_normalized.mtl";
+    //const char* objName = "model_normalized.obj";
+    //const char* mtlName = "model_normalized.mtl";   
+    
+    const char* objName = "bunny(withMtl).obj";
+    const char* mtlName = "bunny.mtl";
     
     int faceNum = 0;
     bool res = loadObjMtl(objName, mtlName, faceNum);
@@ -708,16 +711,10 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 adjNeighborList.resize(temp_vertices.size() + 1);
 
             // 1-ring neiborhood를 위한 인접 리스트 삽입
-
-
-            adjNeighborList[vertexIndex[0]].push_back(vertexIndex[1]);
-            adjNeighborList[vertexIndex[0]].push_back(vertexIndex[2]);
-
-            adjNeighborList[vertexIndex[1]].push_back(vertexIndex[0]);
-            adjNeighborList[vertexIndex[1]].push_back(vertexIndex[2]);
-
-            adjNeighborList[vertexIndex[2]].push_back(vertexIndex[0]);
-            adjNeighborList[vertexIndex[2]].push_back(vertexIndex[1]);
+            // 각 면이 읽힐 때마다, 각 점의 배열값에 해당 면의 인덱스 삽입
+            adjNeighborList[vertexIndex[0]].push_back(faceNum);
+            adjNeighborList[vertexIndex[1]].push_back(faceNum);
+            adjNeighborList[vertexIndex[2]].push_back(faceNum);
 
             ++faceNum;
         }
