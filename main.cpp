@@ -32,7 +32,8 @@ GLuint diffuseColorBufferID;
 GLuint ambientColorBufferID;
 GLuint specularColorBufferID;
 GLuint NormalBufferID;
-GLuint LightID;
+GLuint NeighborNumID;
+GLuint NeighborIdxID;
 
 GLuint VBO; // vertex buffer Object
 GLuint VAO; // vertex array Object
@@ -131,8 +132,19 @@ void init()
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
     glBufferData(GL_ARRAY_BUFFER, (normals.size() * sizeof(point3)), &normals[0], GL_STATIC_DRAW);
 
+    // 3D Unsharp Masking
+    glGenBuffers(1, &NeighborNumID);
+    glBindBuffer(GL_ARRAY_BUFFER, NeighborNumID);
+    glBufferData(GL_ARRAY_BUFFER, (neighborNum.size() * sizeof(int)), &neighborNum[0], GL_STATIC_DRAW);
+
+    glGenBuffers(1, &NeighborIdxID);
+    glBindBuffer(GL_ARRAY_BUFFER, NeighborIdxID);
+    glBufferData(GL_ARRAY_BUFFER, (neighborIdxList.size() * sizeof(int)), &neighborIdxList[0], GL_STATIC_DRAW);
+    //
+
     // 3. shader program
-    programID = LoadShaders("vshader.vertexshader", "fshader.fragmentshader");
+    //programID = LoadShaders("vshader.vertexshader", "fshader.fragmentshader");
+    programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
     glUseProgram(programID);
 
     // 코드는 죄가 없다
@@ -169,6 +181,15 @@ void mydisplay()
     glEnableVertexAttribArray(4);
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
     glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    
+    // 3D Unsharp Masking
+    glEnableVertexAttribArray(5);
+    glBindBuffer(GL_ARRAY_BUFFER, NeighborNumID);
+    glVertexAttribPointer(5, 1, GL_INT, GL_FALSE, 0, (void*)0);
+
+    glEnableVertexAttribArray(6);
+    glBindBuffer(GL_ARRAY_BUFFER, NeighborIdxID);
+    glVertexAttribPointer(6, 1, GL_INT, GL_FALSE, 0, (void*)0);
 
     glDrawArrays(GL_TRIANGLES, 0, tripleFace);
     glDisableVertexAttribArray(0);
@@ -209,8 +230,17 @@ void transform()
     GLuint ModelMatrixID = glGetUniformLocation(programID, "M");
     glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &Model[0][0]);
 
-    LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
+    GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
     glUniform3f(LightID, lightPos.x, lightPos.y, lightPos.z);
+
+    /*
+    GLuint NeighborNumSizeID = glGetUniformLocation(programID, "NeighborNumSize");
+    glUniform1i(NeighborNumSizeID, neighborNum.size());
+
+    GLuint NeighborIdxSizeID = glGetUniformLocation(programID, "NeighborIdxListSize");
+    glUniform1i(NeighborIdxSizeID, neighborNum.size());
+    */
+
 }
 
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path)
