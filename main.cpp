@@ -6,6 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <vector>
+#include <map>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -52,6 +53,7 @@ static std::vector<point4> boundingBoxCoordinate;
 static std::vector<std::vector<int>> adjNeighborList; // 두 텍스쳐를 위한 인접 리스트
 static std::vector<int> neighborNum; // 각 점에 대한 이웃의 개수를 저장하는 벡터
 static std::vector<int> neighborIdxList; // 이웃의 인덱스가 연속적으로 저장된 벡터
+static std::map <std::pair<int, int>, int> checkOverlap; // 텍스쳐에서 중복되는 점 저장을 피하기 위해
 
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path);
 void init();
@@ -106,12 +108,14 @@ void init()
     // 초기화 코드
     // 0. vertex array object 바인딩
     glBindVertexArray(VAO);
+
     // 1. 리스트를 버퍼에 복사
+    /*
     // vertex
     glGenBuffers(1, &VBO); // 버퍼 생성
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, (transformedVertices.size() * sizeof(point3)), &transformedVertices[0], GL_STATIC_DRAW);
-
+    
     // diffuse
     glGenBuffers(1, &diffuseColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBufferID);
@@ -131,20 +135,14 @@ void init()
     glGenBuffers(1, &NormalBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
     glBufferData(GL_ARRAY_BUFFER, (normals.size() * sizeof(point3)), &normals[0], GL_STATIC_DRAW);
+    */
 
-    // 3D Unsharp Masking
-    glGenBuffers(1, &NeighborNumID);
-    glBindBuffer(GL_ARRAY_BUFFER, NeighborNumID);
-    glBufferData(GL_ARRAY_BUFFER, (neighborNum.size() * sizeof(int)), &neighborNum[0], GL_STATIC_DRAW);
-
-    glGenBuffers(1, &NeighborIdxID);
-    glBindBuffer(GL_ARRAY_BUFFER, NeighborIdxID);
-    glBufferData(GL_ARRAY_BUFFER, (neighborIdxList.size() * sizeof(int)), &neighborIdxList[0], GL_STATIC_DRAW);
     //
 
     // 3. shader program
     //programID = LoadShaders("vshader.vertexshader", "fshader.fragmentshader");
-    programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
+    //programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
+    programID = LoadShaders("texture.vertexshader", "texture.fragmentshader");
     glUseProgram(programID);
 
     // 코드는 죄가 없다
@@ -161,6 +159,7 @@ void mydisplay()
     // *** need to fill in this part
 
     // 2. 포인터 지정
+    /*
     // vertex
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -181,18 +180,11 @@ void mydisplay()
     glEnableVertexAttribArray(4);
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
     glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    
-    // 3D Unsharp Masking
-    glEnableVertexAttribArray(5);
-    glBindBuffer(GL_ARRAY_BUFFER, NeighborNumID);
-    glVertexAttribPointer(5, 1, GL_INT, GL_FALSE, 0, (void*)0);
-
-    glEnableVertexAttribArray(6);
-    glBindBuffer(GL_ARRAY_BUFFER, NeighborIdxID);
-    glVertexAttribPointer(6, 1, GL_INT, GL_FALSE, 0, (void*)0);
 
     glDrawArrays(GL_TRIANGLES, 0, tripleFace);
     glDisableVertexAttribArray(0);
+    */
+
     // ***
     //glFlush();
     glutSwapBuffers();
@@ -740,11 +732,32 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             if (!faceReadingStart) // 처음으로 face를 읽어올 때, 인접 리스트 크기 초기화
                 adjNeighborList.resize(temp_vertices.size() + 1);
 
-            // 1-ring neiborhood를 위한 인접 리스트 삽입
-            // 각 면이 읽힐 때마다, 각 점의 배열값에 해당 면의 인덱스 삽입
-            adjNeighborList[vertexIndex[0]].push_back(faceNum);
-            adjNeighborList[vertexIndex[1]].push_back(faceNum);
-            adjNeighborList[vertexIndex[2]].push_back(faceNum);
+            // 1-ring neighborhood를 위한 인접 리스트 삽입
+            int tempVer0 = vertexIndex[0], tempVer1 = vertexIndex[1], tempVer2 = vertexIndex[2];
+            // 아직 체크되지 않은 정점 관계라면 push_back();
+            if (checkOverlap[{tempVer0, tempVer1}] == 0 && checkOverlap[{tempVer1, tempVer0}] == 0)
+            {
+                checkOverlap[{tempVer0, tempVer1}] = 1;
+                checkOverlap[{tempVer1, tempVer0}] = 1;
+                adjNeighborList[vertexIndex[0]].push_back(vertexIndex[1]);
+                adjNeighborList[vertexIndex[1]].push_back(vertexIndex[0]);
+            }
+
+            if (checkOverlap[{tempVer0, tempVer2}] == 0 && checkOverlap[{tempVer2, tempVer0}] == 0)
+            {
+                checkOverlap[{tempVer0, tempVer2}] = 1;
+                checkOverlap[{tempVer2, tempVer0}] = 1;
+                adjNeighborList[vertexIndex[0]].push_back(vertexIndex[2]);
+                adjNeighborList[vertexIndex[2]].push_back(vertexIndex[0]);
+            }
+
+            if (checkOverlap[{tempVer1, tempVer2}] == 0 && checkOverlap[{tempVer2, tempVer1}] == 0)
+            {
+                checkOverlap[{tempVer1, tempVer2}] = 1;
+                checkOverlap[{tempVer2, tempVer1}] = 1;
+                adjNeighborList[vertexIndex[1]].push_back(vertexIndex[2]);
+                adjNeighborList[vertexIndex[2]].push_back(vertexIndex[1]);
+            }
 
             ++faceNum;
         }

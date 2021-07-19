@@ -1,0 +1,9 @@
+#version 330 core
+
+out vec3 ourColor;
+out vec2 TexCoord;
+
+void main()
+{
+	
+}
