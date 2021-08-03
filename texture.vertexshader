@@ -1,12 +1,60 @@
 #version 330 core
-layout(location = 0) in vec3 vertexPosition;
-layout (location = 1) in vec3 tempTexCoord;
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 1) in vec4 vertexColor_diffuse;
+layout(location = 2) in vec3 vertexNormal_modelspace;
+layout(location = 3) in vec3 vertexColor_ambient;
+layout(location = 4) in vec3 vertexColor_specular;
+layout(location = 5) in vec3 textureCoord;
 
 out vec2 texCoord;
+out vec4 diffuseColor;
+out vec3 ambientColor;
+out vec3 specularColor;
+
+out vec3 Position_worldspace;
+out vec3 EyeDirection_cameraspace;
+out vec3 LightDirection_cameraspace;
+out vec3 Normal_cameraspace;
+
+out float currentNeighborNum;
+
+uniform mat4 MVP;
+uniform mat4 V;
+uniform mat4 M;
+uniform vec3 LightPosition_worldspace;
+uniform sampler2D neighborNum;
+uniform sampler2D neighborIdxList;
+uniform float TEXTURESIZE = 32.0;
+
+float rowIdx = 0;
+float colIdx = 0;
 
 void main()
 {
-    gl_Position.xyz = vertexPosition;
-    //gl_Position.w = 1.0;
-    texCoord = vec2(tempTexCoord.x, tempTexCoord.y);
+    gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
+    texCoord = vec2(textureCoord.x, textureCoord.y);
+
+    diffuseColor = vertexColor_diffuse;
+    ambientColor = vertexColor_ambient;
+    specularColor = vertexColor_specular;
+
+    Position_worldspace = (M * vec4(vertexPosition_modelspace,1)).xyz;
+    vec3 vertexPosition_cameraspace = ( V * M * vec4(vertexPosition_modelspace,1)).xyz;
+    EyeDirection_cameraspace = vec3(0,0,0) - vertexPosition_cameraspace;
+
+    vec3 LightPosition_cameraspace = (V * vec4(LightPosition_worldspace, 1)).xyz;
+    LightDirection_cameraspace = LightPosition_cameraspace + EyeDirection_cameraspace;
+
+    Normal_cameraspace = ( V * M * vec4(vertexNormal_modelspace,0)).xyz;
+
+    // get 1-ring neighborhood number
+    colIdx = gl_VertexID/TEXTURESIZE;
+    if(gl_VertexID > TEXTURESIZE)
+    {
+        float quotient_float = gl_VertexID/TEXTURESIZE;
+        int quotient = int(quotient_float);
+        rowIdx = quotient/TEXTURESIZE;
+        colIdx -= quotient;
+    }
+    currentNeighborNum = texture(neighborNum, vec2(colIdx, rowIdx)).x;
 }

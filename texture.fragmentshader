@@ -1,11 +1,47 @@
 #version 330 core
+
 in vec2 texCoord;
+in vec4 diffuseColor;
+in vec3 ambientColor;
+in vec3 specularColor;
+
+in vec3 Position_worldspace;
+in vec3 EyeDirection_cameraspace;
+in vec3 LightDirection_cameraspace;
+in vec3 Normal_cameraspace;
+
+in float currentNeighborNum;
+
+uniform sampler2D neighborNum;
+uniform sampler2D neighborIdxList;
+uniform vec3 LightPosition_worldspace;
+uniform float TEXTURESIZE = 512.0;
+
 out vec4 color;
 
-uniform sampler2D myTexture;
+float rowIdx = 0;
+float colIdx = 0;
 
 void main()
 {
-    //color = vec3(1,0,0);
-    color = texture(myTexture, texCoord);
+    vec3 LightColor = vec3(1,1,1);
+    float LightPower = 30.0f;
+
+    // *** for phong illumination
+    vec3 MaterialDiffuseColor = vec3(diffuseColor);
+    vec3 ModifiedAmbientColor = clamp(ambientColor, 0.1, 1.0) * MaterialDiffuseColor;
+
+    vec3 n = normalize(Normal_cameraspace);
+    vec3 l = normalize(LightDirection_cameraspace);
+    vec3 E = normalize(EyeDirection_cameraspace);
+    vec3 R = reflect (-l, n);
+
+    float distance = length( LightPosition_worldspace - Position_worldspace );
+    float cosAlpha = clamp( dot( E,R ), 0,1 );
+    float cosTheta = clamp( dot( n,l), 0,1 );
+
+    vec3 illuminationColor = ModifiedAmbientColor + MaterialDiffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + specularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
+    // ***
+    color = vec4(currentNeighborNum, 0, 0, 1);
+    //color = texture(neighborNum, texCoord);
 }

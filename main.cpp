@@ -15,7 +15,7 @@
 #include "common.h"
 
 const int SCREENSIZE = 512;
-const int TEXTURESIZE = 512;
+const int TEXTURESIZE = 32;
 
 static int tripleFace;
 glm::vec3 lightPos = glm::vec3(3, 2, 1);
@@ -44,6 +44,7 @@ GLuint VAO; // vertex array Object
 
 static std::vector<point3> vertices;
 static std::vector<point3> normals;
+static std::vector<point3> textureCoord;
 static std::vector<point3> specularColors;
 static std::vector<point3> ambientColors;
 static std::vector<point4> diffuseColors;
@@ -54,11 +55,9 @@ static std::vector<point4> boundingBoxCoordinate;
 
 // 3D Unsharp Masking을 위해
 static std::vector<std::vector<int>> adjNeighborList; // 두 텍스쳐를 위한 인접 리스트
-static GLubyte neighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 각 점에 대한 이웃의 개수를 저장하는 벡터
-//static std::vector<GLubyte> neighborNum; // 각 점에 대한 이웃의 개수를 저장하는 벡터
-static GLubyte neighborIdxList[TEXTURESIZE * TEXTURESIZE] = {0, }; // 이웃의 인덱스가 연속적으로 저장된 벡터
-//static std::vector<GLubyte> neighborIdxList; // 이웃의 인덱스가 연속적으로 저장된 벡터
-static std::map <std::pair<int, int>, int> checkOverlap; // 텍스쳐에서 중복되는 점 저장을 피하기 위해
+static GLubyte neighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 각 점에 대한 이웃의 개수를 저장하는 텍스쳐
+static GLuint neighborIdxList[TEXTURESIZE * TEXTURESIZE] = {0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스쳐
+static std::map <std::pair<int, int>, int> checkOverlap; // 텍스쳐에서 중복되는 점 저장을 피하기 위한 map
 
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path);
 void init();
@@ -97,12 +96,12 @@ void init()
 {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     // .obj, .mtl 로딩 코드
-    //const char* objName = "model_normalized.obj";
-    //const char* mtlName = "model_normalized.mtl";   
+    const char* objName = "model_normalized.obj";
+    const char* mtlName = "model_normalized.mtl";   
 
-    const char* objName = "bunny(withMtl).obj";
-    const char* mtlName = "bunny.mtl";
-    memset(neighborNum, 255, sizeof(neighborNum));
+    //const char* objName = "bunny(withMtl).obj";
+    //const char* mtlName = "bunny.mtl";
+    //memset(neighborNum, 255, sizeof(neighborNum));
 
     int faceNum = 0;
     bool res = loadObjMtl(objName, mtlName, faceNum);
@@ -140,10 +139,40 @@ void init()
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
     glBufferData(GL_ARRAY_BUFFER, (normals.size() * sizeof(point3)), &normals[0], GL_STATIC_DRAW);
     //
+    // *** 3D unsharp Masking
+    // texture Coordinate
+    glGenBuffers(1, &TextureCoordID);
+    glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
+    glBufferData(GL_ARRAY_BUFFER, (textureCoord.size() * sizeof(point3)), &textureCoord[0], GL_STATIC_DRAW);
+
+    // Texture
+    GLuint neighborNumTexID;
+    glGenTextures(1, &neighborNumTexID);
+    glBindTexture(GL_TEXTURE_2D, neighborNumTexID);
+
+    GLuint neighborNumIdxID;
+    glGenTextures(1, &neighborNumIdxID);
+    glBindTexture(GL_TEXTURE_2D, neighborNumIdxID);
+
+    // set the texture wrapping parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // set texture filtering parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    //memset(neighborNum, 255, sizeof(neighborNum));
+    //neighborNum[0] = 50;
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, neighborNum);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_INT, neighborIdxList);
 
     // 3. shader program
-    programID = LoadShaders("vshader.vertexshader", "fshader.fragmentshader");
-    //programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader
+    //programID = LoadShaders("vshader.vertexshader", "fshader.fragmentshader");
+    programID = LoadShaders("texture.vertexshader", "texture.fragmentshader");
+    glUniform1i(glGetUniformLocation(programID, "neighborNum"), 0);
+    glUniform1i(glGetUniformLocation(programID, "neighborIdxList"), 1);
 
     // 코드는 죄가 없다
     glEnable(GL_DEPTH_TEST);
@@ -182,6 +211,10 @@ void mydisplay()
     glEnableVertexAttribArray(4);
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
     glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    // texture Coordinate
+    glEnableVertexAttribArray(5);
+    glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
+    glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
     glDrawArrays(GL_TRIANGLES, 0, tripleFace);
     glDisableVertexAttribArray(0);
@@ -542,8 +575,6 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             else
                 continue;
         }
-
-
     }
 
     mtlData.push_back(temp);
@@ -564,10 +595,12 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         return false;
     }
 
-    std::vector< unsigned int > vertexIndices, uvIndices, normalIndices;
+    std::vector<unsigned int> vertexIndices, textureIndices, normalIndices;
 
-    std::vector<point3> temp_vertices;
-    std::vector<point3> temp_normals;
+    std::vector<point3> tempVertices;
+    std::vector<point3> tempNormals;
+    std::vector<point3> tempTextureCoord;
+
     int materialPointer = -1; // 넣어야 할 material // -1로 초기화해주는 이유는 예외처리를 위해
     bool faceReadingStart = false;
 
@@ -586,7 +619,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         {
             point3 vertex;
             fscanf(fp, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z);
-            temp_vertices.push_back(vertex);
+            tempVertices.push_back(vertex);
         }
 
         if (strcmp(lineHeader, "usemtl") == 0)
@@ -609,30 +642,26 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             }
         }
 
-        // 첫 단어가 vt라면 uv를 읽는다 
-        /*
-         else if (strcmp(lineHeader, "vt") == 0)
+        else if (strcmp(lineHeader, "vt") == 0)
         {
-            glm::vec2 uv;
-            fscanf(fp, "%f %f\n", &uv.x, &uv.y);
-            temp_uvs.push_back(uv);
+            point3 texCoord;
+            fscanf(fp, "%f %f %f\n", &texCoord.x, &texCoord.y, &texCoord.z);
+            tempTextureCoord.push_back(texCoord);
         }
-        */
-
 
         // 첫 단어가 vn이라면, normal을 읽는다
         else if (strcmp(lineHeader, "vn") == 0)
         {
             point3 normal;
             fscanf(fp, "%f %f %f\n", &normal.x, &normal.y, &normal.z);
-            temp_normals.push_back(normal);
+            tempNormals.push_back(normal);
         }
 
         // 첫 단어가 f라면, face를 읽는다
         else if (strcmp(lineHeader, "f") == 0)
         {
-            unsigned int vertexIndex[3], normalIndex[3];
-            std::vector<int> temp_facelist; // face table에 저장된 수들을 임시로 저장하는 벡터
+            unsigned int vertexIndex[3], normalIndex[3], textureCoordIndex[3];
+            std::vector<int> tempFaceList; // face table에 저장된 수들을 임시로 저장하는 벡터
 
             char str[128];
             fgets(str, sizeof(str), fp);
@@ -641,7 +670,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
 
             while (ptr != NULL) // 자른 문자열이 나오지 않을 때까지 출력
             {
-                temp_facelist.push_back(atoi(ptr));
+                tempFaceList.push_back(atoi(ptr));
                 ptr = strtok(NULL, " //");
                 ++ptrSize;
             }
@@ -651,20 +680,18 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             // f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 순으로 저장됨
             if (ptrSize == 9)
             {
-                int temp1 = 0;
-                int temp2 = 0;
+                int temp1 = 0, temp2 = 0, temp3 = 0;
 
                 for (int i = 0; i < 9; i++)
                 {
                     if (i % 3 == 0)
-                    {
-                        vertexIndex[temp1++] = temp_facelist[i];
-                    }
+                        vertexIndex[temp1++] = tempFaceList[i];
 
+                    if (i % 3 == 1)
+                        textureCoordIndex[temp2++] = tempFaceList[i];
+                    
                     else if (i % 3 == 2)
-                    {
-                        normalIndex[temp2++] = temp_facelist[i];
-                    }
+                        normalIndex[temp3++] = tempFaceList[i];
                 }
 
                 // 점 세개에 대한 color
@@ -680,6 +707,12 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 specularColors.push_back(mtlData[materialPointer].Ks);
                 specularColors.push_back(mtlData[materialPointer].Ks);
 
+                // index가 9개가 있을 때만 저장되어야 하므로 위치는 여기에!
+                /*
+                textureIndices.push_back(textureCoordIndex[0]);
+                textureIndices.push_back(textureCoordIndex[1]);
+                textureIndices.push_back(textureCoordIndex[2]);
+                */
             }
 
             // f v1//vn1 v2//vn2 v3//vn3 순으로 저장됨
@@ -687,18 +720,15 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             {
                 int temp1 = 0;
                 int temp2 = 0;
+                int temp3 = 0;
 
                 for (int i = 0; i < 6; i++)
                 {
                     if (i % 2 == 0)
-                    {
-                        vertexIndex[temp1++] = temp_facelist[i];
-                    }
+                        vertexIndex[temp1++] = tempFaceList[i];
 
                     else
-                    {
-                        normalIndex[temp2++] = temp_facelist[i];
-                    }
+                        normalIndex[temp2++] = tempFaceList[i];
                 }
 
                 // 점 세 개에 대한 color
@@ -714,6 +744,11 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 specularColors.push_back(mtlData[materialPointer].Ks);
                 specularColors.push_back(mtlData[materialPointer].Ks);
                 specularColors.push_back(mtlData[materialPointer].Ks);
+
+                // texture 좌표가 존재하지 않는 face의 경우, (0,0,0)으로 삽입
+                textureCoordIndex[temp3++] = 1;
+                textureCoordIndex[temp3++] = 1;
+                textureCoordIndex[temp3++] = 1;
             }
 
             else
@@ -730,8 +765,12 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             normalIndices.push_back(normalIndex[1]);
             normalIndices.push_back(normalIndex[2]);
 
+            textureIndices.push_back(textureCoordIndex[0]);
+            textureIndices.push_back(textureCoordIndex[1]);
+            textureIndices.push_back(textureCoordIndex[2]);
+
             if (!faceReadingStart) // 처음으로 face를 읽어올 때, 인접 리스트 크기 초기화
-                adjNeighborList.resize(temp_vertices.size() + 1);
+                adjNeighborList.resize(tempVertices.size() + 1);
 
             // 1-ring neighborhood를 위한 인접 리스트 삽입
             int tempVer0 = vertexIndex[0], tempVer1 = vertexIndex[1], tempVer2 = vertexIndex[2];
@@ -769,22 +808,39 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     }
 
     // 인덱싱 과정
-
     // 각 삼각형의 꼭짓점을 모두 순회
     for (int i = 0; i < vertexIndices.size(); i++)
     {
         unsigned int vertexIdx = vertexIndices[i];
         unsigned int normalIdx = normalIndices[i];
         // obj는 1부터 시작하지만, C++의 index는 0부터 시작하기 때문에
-        point3 vertex = temp_vertices[vertexIdx - 1];
-        point3 normal = temp_normals[normalIdx - 1];
+        point3 vertex = tempVertices[vertexIdx - 1];
+        point3 normal = tempNormals[normalIdx - 1];
 
         vertices.push_back(vertex);
         normals.push_back(normal);
+
+        // 텍스쳐 좌표 인덱싱
+        unsigned int textureCoordIdx = textureIndices[i];
+        point3 texture = tempTextureCoord[textureCoordIdx - 1];
+        textureCoord.push_back(texture);
     }
 
+    // 텍스쳐 좌표 인덱싱
+    /*
+    for (int i = 0; i < textureIndices.size(); i++)
+    {
+        unsigned int textureCoordIdx = textureIndices[i];
+        point3 texture = tempTextureCoord[textureCoordIdx - 1];
+        textureCoord.push_back(texture);
+    }
+    */
+
+    //textureCoord = tempTextureCoord;
+
+
     // 3D Unsharp Masking을 위한 텍스쳐
-    int verticesNum = temp_vertices.size() + 1; // 점은 0번부터 시작하므로 임시 +1
+    int verticesNum = tempVertices.size() + 1; // 점은 0번부터 시작하므로 임시 +1
     //neighborNum.assign(verticesNum, 0);
     int neighborSize;
     int tempNextIdx = 0;
@@ -792,7 +848,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     for (int i = 0; i < verticesNum; ++i)
     {
         neighborSize = adjNeighborList[i].size();
-        neighborNum[i] = neighborSize;
+        neighborNum[i] = neighborSize * 10;
 
         for (int j = 0; j < neighborSize; ++j)
         {

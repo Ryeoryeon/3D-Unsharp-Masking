@@ -23,8 +23,8 @@ uniform mat4 V;
 uniform mat4 M;
 uniform vec3 LightPosition_worldspace;
 
-void main(){
-
+void main()
+{
 	diffuseColor = vertexColor_diffuse;
 	ambientColor = vertexColor_ambient;
 	specularColor = vertexColor_specular;
