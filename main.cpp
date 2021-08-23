@@ -14,13 +14,14 @@
 #include <iostream>
 #include "common.h"
 
-const int SCREENSIZE = 512;
-const int TEXTURESIZE = 32;
+const int SCREENSIZE = 1024;
+const int TEXTURESIZE = 512;
 
 static int tripleFace;
 glm::vec3 lightPos = glm::vec3(3, 2, 1);
 
-float SCALINGFACTOR = 1.4;
+float SCALINGFACTOR = 1.8;
+//float SCALINGFACTOR = 1.4;
 static double boundMaxDist;
 static point3 boundingCent;
 
@@ -28,6 +29,7 @@ glm::mat4 Projection;
 glm::mat4 View;
 glm::mat4 Model;
 glm::mat4 mvp;
+glm::mat4 transformedMatrix;
 
 GLuint programID;
 GLuint VertexBufferID;
@@ -36,14 +38,16 @@ GLuint diffuseColorBufferID;
 GLuint ambientColorBufferID;
 GLuint specularColorBufferID;
 GLuint NormalBufferID;
-GLuint NeighborNumID;
-GLuint NeighborIdxID;
+//GLuint NeighborNumID;
+//GLuint NeighborIdxID;
 
-GLuint VBO; // vertex buffer Object
-GLuint VAO; // vertex array Object
+GLuint vertexBuffer; // vertex buffer Object
+GLuint elementBuffer; // element buffer
+//GLuint VAO; // vertex array Object
 
-static std::vector<point3> vertices;
-static std::vector<point3> normals;
+std::vector<point3> verticesPosition;
+static std::vector<unsigned int> vertexPosIndices;
+static std::vector<point3> vertexPerAvgNormal; // normals
 static std::vector<point3> textureCoord;
 static std::vector<point3> specularColors;
 static std::vector<point3> ambientColors;
@@ -96,12 +100,12 @@ void init()
 {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     // .obj, .mtl 로딩 코드
-    const char* objName = "model_normalized.obj";
-    const char* mtlName = "model_normalized.mtl";   
+    //const char* objName = "model_normalized.obj";
+    //const char* mtlName = "model_normalized.mtl";   
 
-    //const char* objName = "bunny(withMtl).obj";
-    //const char* mtlName = "bunny.mtl";
-    //memset(neighborNum, 255, sizeof(neighborNum));
+    const char* objName = "bunny(withMtl).obj";
+    //const char* objName = "bunny(moreFace_withMtl).obj";
+    const char* mtlName = "bunny.mtl";
 
     int faceNum = 0;
     bool res = loadObjMtl(objName, mtlName, faceNum);
@@ -109,50 +113,66 @@ void init()
     tripleFace = faceNum * 3;
 
     // 초기화 코드
+    /*
     glGenVertexArrays(1, &VAO);
     // 0. vertex array object 바인딩
     glBindVertexArray(VAO);
+    */
 
     // 1. 리스트를 버퍼에 복사
-    // vertex
-    glGenBuffers(1, &VBO); // 버퍼 생성
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, (transformedVertices.size() * sizeof(point3)), &transformedVertices[0], GL_STATIC_DRAW);
+    // element
+    glGenBuffers(1, &vertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point3), &verticesPosition[0], GL_STATIC_DRAW);
+
+    // vertex element
+    glGenBuffers(1, &elementBuffer); // 버퍼 생성
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, vertexPosIndices.size() * sizeof(unsigned int), &vertexPosIndices[0], GL_STATIC_DRAW);
 
     // diffuse
     glGenBuffers(1, &diffuseColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBufferID);
-    glBufferData(GL_ARRAY_BUFFER, (tripleFace * sizeof(point4)), &diffuseColors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point4), &diffuseColors[0], GL_STATIC_DRAW);
 
     // ambient
     glGenBuffers(1, &ambientColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, ambientColorBufferID);
-    glBufferData(GL_ARRAY_BUFFER, (tripleFace * sizeof(point3)), &ambientColors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point3), &ambientColors[0], GL_STATIC_DRAW);
 
     // specular
     glGenBuffers(1, &specularColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
-    glBufferData(GL_ARRAY_BUFFER, (tripleFace * sizeof(point3)), &specularColors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point3), &specularColors[0], GL_STATIC_DRAW);
 
     // normal
     glGenBuffers(1, &NormalBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
-    glBufferData(GL_ARRAY_BUFFER, (normals.size() * sizeof(point3)), &normals[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertexPerAvgNormal.size() * sizeof(point3), &vertexPerAvgNormal[0], GL_STATIC_DRAW);
     //
     // *** 3D unsharp Masking
     // texture Coordinate
-    glGenBuffers(1, &TextureCoordID);
-    glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
-    glBufferData(GL_ARRAY_BUFFER, (textureCoord.size() * sizeof(point3)), &textureCoord[0], GL_STATIC_DRAW);
+    if (textureCoord.size() != 0)
+    {
+        glGenBuffers(1, &TextureCoordID);
+        glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
+        glBufferData(GL_ARRAY_BUFFER, textureCoord.size() * sizeof(point3), &textureCoord[0], GL_STATIC_DRAW);
+    }
 
     // Texture
     GLuint neighborNumTexID;
     glGenTextures(1, &neighborNumTexID);
     glBindTexture(GL_TEXTURE_2D, neighborNumTexID);
 
+    /*
     GLuint neighborNumIdxID;
     glGenTextures(1, &neighborNumIdxID);
     glBindTexture(GL_TEXTURE_2D, neighborNumIdxID);
+
+    GLuint vertexPerNormalID;
+    glGenTextures(1, &vertexPerNormalID);
+    glBindTexture(GL_TEXTURE_2D, vertexPerNormalID);
+    */
 
     // set the texture wrapping parameters
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -165,14 +185,16 @@ void init()
     //memset(neighborNum, 255, sizeof(neighborNum));
     //neighborNum[0] = 50;
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, neighborNum);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_INT, neighborIdxList);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, neighborNum);
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_INT, neighborIdxList);
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_FLOAT, vertexPerAvgNormal);
 
     // 3. shader program
     //programID = LoadShaders("vshader.vertexshader", "fshader.fragmentshader");
-    programID = LoadShaders("texture.vertexshader", "texture.fragmentshader");
+    //programID = LoadShaders("texture.vertexshader", "texture.fragmentshader");
+    programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
     glUniform1i(glGetUniformLocation(programID, "neighborNum"), 0);
-    glUniform1i(glGetUniformLocation(programID, "neighborIdxList"), 1);
+    //glUniform1i(glGetUniformLocation(programID, "neighborIdxList"), 1);
 
     // 코드는 죄가 없다
     glEnable(GL_DEPTH_TEST);
@@ -193,7 +215,7 @@ void mydisplay()
     // 2. 포인터 지정
     // vertex
     glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     // diffuse
     glEnableVertexAttribArray(1);
@@ -215,9 +237,22 @@ void mydisplay()
     glEnableVertexAttribArray(5);
     glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
     glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    
 
-    glDrawArrays(GL_TRIANGLES, 0, tripleFace);
+    glDrawElements(
+        GL_TRIANGLES,
+        vertexPosIndices.size(), // count
+        GL_UNSIGNED_INT,
+        (void*)0 // offset
+    );
+
+    //glDrawArrays(GL_TRIANGLES, 0, tripleFace);
     glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(2);
+    glDisableVertexAttribArray(3);
+    glDisableVertexAttribArray(4);
+    glDisableVertexAttribArray(5);
 
     // ***
     //glFlush();
@@ -255,6 +290,10 @@ void transform()
     glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &View[0][0]);
     GLuint ModelMatrixID = glGetUniformLocation(programID, "M");
     glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &Model[0][0]);
+
+    // 변환 행렬
+    GLuint TransformedMatrixID = glGetUniformLocation(programID, "Transform");
+    glUniformMatrix4fv(TransformedMatrixID, 1, GL_FALSE, &transformedMatrix[0][0]);
 
     GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
     glUniform3f(LightID, lightPos.x, lightPos.y, lightPos.z);
@@ -379,9 +418,9 @@ double boundingBoxDist(point3& boxCent)
     int num = 0;
 
     // 바운딩 박스의 8개 좌표들 구하기
-    for (int i = 0; i < vertices.size(); i++)
+    for (int i = 0; i < verticesPosition.size(); i++)
     {
-        point3 temp = vertices[i];
+        point3 temp = verticesPosition[i];
 
         if (maxCoordX < temp.x)
             maxCoordX = temp.x;
@@ -443,46 +482,10 @@ void boundingBox()
     float scalingSize = SCALINGFACTOR / boundMaxDist;
     glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scalingSize, scalingSize, scalingSize));
     glm::mat4 translateMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-boundingCent.x, -boundingCent.y, -boundingCent.z));
-    glm::mat4 transformedMatrix = translateMatrix * scalingMatrix;
+    //glm::mat4 transformedMatrix = translateMatrix * scalingMatrix;
+    transformedMatrix = scalingMatrix * translateMatrix;
 
-    // homogeneous coordinate
-    for (int i = 0; i < vertices.size(); ++i)
-    {
-        point4 temp_homo = point4(vertices[i].x, vertices[i].y, vertices[i].z); // (x,y.z.1 변환)
-        float temp_output_homo[4] = { 0, };
-
-        for (int j = 0; j < 3; ++j)
-        {
-            // 주의!
-            // glm::mat4형을 디버그해보면 [0]~[3]은 열에 해당하는 정보를 담고 있었다. (x,y,z,w는 행에 해당하는 정보)
-            if (j == 0)
-            {
-                temp_output_homo[j] += transformedMatrix[0].x * temp_homo.x;
-                temp_output_homo[j] += transformedMatrix[1].x * temp_homo.y;
-                temp_output_homo[j] += transformedMatrix[2].x * temp_homo.z;
-                temp_output_homo[j] += transformedMatrix[3].x * temp_homo.w;
-            }
-
-            else if (j == 1)
-            {
-                temp_output_homo[j] += transformedMatrix[0].y * temp_homo.x;
-                temp_output_homo[j] += transformedMatrix[1].y * temp_homo.y;
-                temp_output_homo[j] += transformedMatrix[2].y * temp_homo.z;
-                temp_output_homo[j] += transformedMatrix[3].y * temp_homo.w;
-            }
-
-            else  // j == 2
-            {
-                temp_output_homo[j] += transformedMatrix[0].z * temp_homo.x;
-                temp_output_homo[j] += transformedMatrix[1].z * temp_homo.y;
-                temp_output_homo[j] += transformedMatrix[2].z * temp_homo.z;
-                temp_output_homo[j] += transformedMatrix[3].z * temp_homo.w;
-            }
-        }
-
-        point3 output_homo = point3(temp_output_homo[0], temp_output_homo[1], temp_output_homo[2]);
-        transformedVertices.push_back(output_homo);
-    }
+    // 행렬과 좌표 곱 계산은 GPU에서
 }
 
 bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
@@ -558,7 +561,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         else if (strcmp(lineHeader, "Ke") == 0) // Ke는 건너뛰기
             continue;
 
-        else if (strcmp(lineHeader, "illum") == 0) // Ke는 건너뛰기
+        else if (strcmp(lineHeader, "illum") == 0)
             continue;
 
         // 나머지 문자열일 경우, material의 이름을 포함하고 있는지 확인해보자
@@ -586,7 +589,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             exit(0);
     }
 
-    // .obj load
+    // *********** .obj load
     FILE* fp;
     fp = fopen(objName, "r");
 
@@ -595,11 +598,16 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         return false;
     }
 
-    std::vector<unsigned int> vertexIndices, textureIndices, normalIndices;
+    //std::vector<unsigned int> textureIndices, normalIndices;
+    std::vector<unsigned int> textureIndices;
 
-    std::vector<point3> tempVertices;
-    std::vector<point3> tempNormals;
-    std::vector<point3> tempTextureCoord;
+    // vertex : normal 1:1 대응을 위해 (#average)
+    std::vector<std::vector<unsigned int>> normalIndices;
+    std::map <std::pair<int, int>, int> checkOverlapNormal;
+
+    //std::vector<point3> verticesPosition;
+    std::vector<point3> verticesNormals; // normal의 값 그 자체들이 저장
+    std::vector<point3> verticesTexCoord; // vt의 값 그 자체들이 저장
 
     int materialPointer = -1; // 넣어야 할 material // -1로 초기화해주는 이유는 예외처리를 위해
     bool faceReadingStart = false;
@@ -619,7 +627,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         {
             point3 vertex;
             fscanf(fp, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z);
-            tempVertices.push_back(vertex);
+            verticesPosition.push_back(vertex);
         }
 
         if (strcmp(lineHeader, "usemtl") == 0)
@@ -646,7 +654,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         {
             point3 texCoord;
             fscanf(fp, "%f %f %f\n", &texCoord.x, &texCoord.y, &texCoord.z);
-            tempTextureCoord.push_back(texCoord);
+            verticesTexCoord.push_back(texCoord);
         }
 
         // 첫 단어가 vn이라면, normal을 읽는다
@@ -654,17 +662,18 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         {
             point3 normal;
             fscanf(fp, "%f %f %f\n", &normal.x, &normal.y, &normal.z);
-            tempNormals.push_back(normal);
+            verticesNormals.push_back(normal);
         }
 
         // 첫 단어가 f라면, face를 읽는다
         else if (strcmp(lineHeader, "f") == 0)
         {
-            unsigned int vertexIndex[3], normalIndex[3], textureCoordIndex[3];
+            unsigned int vertexPosIndex[3], normalIndex[3], texCoordIndex[3];
             std::vector<int> tempFaceList; // face table에 저장된 수들을 임시로 저장하는 벡터
 
             char str[128];
             fgets(str, sizeof(str), fp);
+            str[strlen(str) - 1] = '\0';
             char* ptr = strtok(str, " //");
             int ptrSize = 0;
 
@@ -674,8 +683,21 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 ptr = strtok(NULL, " //");
                 ++ptrSize;
             }
-            
+
             mtlData[materialPointer].Kd.w = mtlData[materialPointer].d;
+
+            if (!faceReadingStart) // 처음으로 face를 읽어올 때, 인접 리스트와 색상 배열 크기 초기화
+            {
+                int vertexPosNum = verticesPosition.size();
+                adjNeighborList.resize(vertexPosNum);
+                diffuseColors.resize(vertexPosNum);
+                ambientColors.resize(vertexPosNum);
+                specularColors.resize(vertexPosNum);
+                normalIndices.resize(vertexPosNum); // 기존 vn index 저장
+
+                vertexPerAvgNormal.assign(vertexPosNum, { 0, 0, 0 }); // face의 avg normal 저장
+                faceReadingStart = true;
+            }
 
             // f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 순으로 저장됨
             if (ptrSize == 9)
@@ -685,34 +707,14 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 for (int i = 0; i < 9; i++)
                 {
                     if (i % 3 == 0)
-                        vertexIndex[temp1++] = tempFaceList[i];
+                        vertexPosIndex[temp1++] = tempFaceList[i] - 1;
 
                     if (i % 3 == 1)
-                        textureCoordIndex[temp2++] = tempFaceList[i];
-                    
+                        texCoordIndex[temp2++] = tempFaceList[i] - 1;
+
                     else if (i % 3 == 2)
-                        normalIndex[temp3++] = tempFaceList[i];
+                        normalIndex[temp3++] = tempFaceList[i] - 1;
                 }
-
-                // 점 세개에 대한 color
-                diffuseColors.push_back(mtlData[materialPointer].Kd);
-                diffuseColors.push_back(mtlData[materialPointer].Kd);
-                diffuseColors.push_back(mtlData[materialPointer].Kd);
-
-                ambientColors.push_back(mtlData[materialPointer].Ka);
-                ambientColors.push_back(mtlData[materialPointer].Ka);
-                ambientColors.push_back(mtlData[materialPointer].Ka);
-
-                specularColors.push_back(mtlData[materialPointer].Ks);
-                specularColors.push_back(mtlData[materialPointer].Ks);
-                specularColors.push_back(mtlData[materialPointer].Ks);
-
-                // index가 9개가 있을 때만 저장되어야 하므로 위치는 여기에!
-                /*
-                textureIndices.push_back(textureCoordIndex[0]);
-                textureIndices.push_back(textureCoordIndex[1]);
-                textureIndices.push_back(textureCoordIndex[2]);
-                */
             }
 
             // f v1//vn1 v2//vn2 v3//vn3 순으로 저장됨
@@ -725,30 +727,31 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 for (int i = 0; i < 6; i++)
                 {
                     if (i % 2 == 0)
-                        vertexIndex[temp1++] = tempFaceList[i];
+                        vertexPosIndex[temp1++] = tempFaceList[i] - 1;
 
                     else
-                        normalIndex[temp2++] = tempFaceList[i];
+                        normalIndex[temp2++] = tempFaceList[i] - 1;
                 }
 
-                // 점 세 개에 대한 color
+                // texture 좌표가 존재하지 않는 face의 경우, (종종 섞여있을 수 있다)
+                // -> 유효하지 않도록 모두 1번째(같은) 인덱스로 삽입
+                texCoordIndex[temp3++] = 1;
+                texCoordIndex[temp3++] = 1;
+                texCoordIndex[temp3++] = 1;
+            }
 
-                diffuseColors.push_back(mtlData[materialPointer].Kd);
-                diffuseColors.push_back(mtlData[materialPointer].Kd);
-                diffuseColors.push_back(mtlData[materialPointer].Kd);
+            // f v1// v2// f3// 순으로 저장되는 형태
+            else if (ptrSize == 3)
+            {
+                vertexPosIndex[0] = tempFaceList[0] - 1;
+                vertexPosIndex[1] = tempFaceList[1] - 1;
+                vertexPosIndex[2] = tempFaceList[2] - 1;
 
-                ambientColors.push_back(mtlData[materialPointer].Ka);
-                ambientColors.push_back(mtlData[materialPointer].Ka);
-                ambientColors.push_back(mtlData[materialPointer].Ka);
-
-                specularColors.push_back(mtlData[materialPointer].Ks);
-                specularColors.push_back(mtlData[materialPointer].Ks);
-                specularColors.push_back(mtlData[materialPointer].Ks);
-
-                // texture 좌표가 존재하지 않는 face의 경우, (0,0,0)으로 삽입
-                textureCoordIndex[temp3++] = 1;
-                textureCoordIndex[temp3++] = 1;
-                textureCoordIndex[temp3++] = 1;
+                // texture 좌표가 존재하지 않는 face의 경우, (종종 섞여있을 수 있다)
+                // -> 유효하지 않도록 모두 1번째(같은) 인덱스로 삽입
+                texCoordIndex[0] = 1;
+                texCoordIndex[1] = 1;
+                texCoordIndex[2] = 1;
             }
 
             else
@@ -757,46 +760,63 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 return false;
             }
 
-            vertexIndices.push_back(vertexIndex[0]);
-            vertexIndices.push_back(vertexIndex[1]);
-            vertexIndices.push_back(vertexIndex[2]);
+            // face normal vector 계산
+            glm::vec3 forFaceNormalVec1;
+            glm::vec3 forFaceNormalVec2;
 
-            normalIndices.push_back(normalIndex[0]);
-            normalIndices.push_back(normalIndex[1]);
-            normalIndices.push_back(normalIndex[2]);
+            forFaceNormalVec1.x = verticesPosition[vertexPosIndex[1]].x - verticesPosition[vertexPosIndex[0]].x;
+            forFaceNormalVec1.y = verticesPosition[vertexPosIndex[1]].y - verticesPosition[vertexPosIndex[0]].y;
+            forFaceNormalVec1.z = verticesPosition[vertexPosIndex[1]].z - verticesPosition[vertexPosIndex[0]].z;
 
-            textureIndices.push_back(textureCoordIndex[0]);
-            textureIndices.push_back(textureCoordIndex[1]);
-            textureIndices.push_back(textureCoordIndex[2]);
+            forFaceNormalVec2.x = verticesPosition[vertexPosIndex[2]].x - verticesPosition[vertexPosIndex[0]].x;
+            forFaceNormalVec2.y = verticesPosition[vertexPosIndex[2]].y - verticesPosition[vertexPosIndex[0]].y;
+            forFaceNormalVec2.z = verticesPosition[vertexPosIndex[2]].z - verticesPosition[vertexPosIndex[0]].z;
+            
+            glm::vec3 faceNormal = glm::cross(forFaceNormalVec1, forFaceNormalVec2);
+            faceNormal /= glm::length(faceNormal); // 중요!
 
-            if (!faceReadingStart) // 처음으로 face를 읽어올 때, 인접 리스트 크기 초기화
-                adjNeighborList.resize(tempVertices.size() + 1);
+            for (int i = 0; i < 3; ++i)
+            {
+                // vertex position indexing
+                vertexPosIndices.push_back(vertexPosIndex[i]);
+
+                // ---> vertex : vertex normal vector 1:1 대응을 위한 공통 부분 
+                vertexPerAvgNormal[vertexPosIndex[i]].x += faceNormal.x;
+                vertexPerAvgNormal[vertexPosIndex[i]].y += faceNormal.y;
+                vertexPerAvgNormal[vertexPosIndex[i]].z += faceNormal.z;
+
+                // 점 세개에 대한 color
+                diffuseColors[vertexPosIndex[i]] = mtlData[materialPointer].Kd;
+                ambientColors[vertexPosIndex[i]] = mtlData[materialPointer].Ka;
+                specularColors[vertexPosIndex[i]] = mtlData[materialPointer].Ks;
+            }
 
             // 1-ring neighborhood를 위한 인접 리스트 삽입
-            int tempVer0 = vertexIndex[0], tempVer1 = vertexIndex[1], tempVer2 = vertexIndex[2];
+            int tempVer0 = vertexPosIndex[0], tempVer1 = vertexPosIndex[1], tempVer2 = vertexPosIndex[2];
+
             // 아직 체크되지 않은 정점 관계라면 push_back();
             if (checkOverlap[{tempVer0, tempVer1}] == 0 && checkOverlap[{tempVer1, tempVer0}] == 0)
             {
                 checkOverlap[{tempVer0, tempVer1}] = 1;
                 checkOverlap[{tempVer1, tempVer0}] = 1;
-                adjNeighborList[vertexIndex[0]].push_back(vertexIndex[1]);
-                adjNeighborList[vertexIndex[1]].push_back(vertexIndex[0]);
+                adjNeighborList[vertexPosIndex[0]].push_back(vertexPosIndex[1]);
+                adjNeighborList[vertexPosIndex[1]].push_back(vertexPosIndex[0]);
             }
 
             if (checkOverlap[{tempVer0, tempVer2}] == 0 && checkOverlap[{tempVer2, tempVer0}] == 0)
             {
                 checkOverlap[{tempVer0, tempVer2}] = 1;
                 checkOverlap[{tempVer2, tempVer0}] = 1;
-                adjNeighborList[vertexIndex[0]].push_back(vertexIndex[2]);
-                adjNeighborList[vertexIndex[2]].push_back(vertexIndex[0]);
+                adjNeighborList[vertexPosIndex[0]].push_back(vertexPosIndex[2]);
+                adjNeighborList[vertexPosIndex[2]].push_back(vertexPosIndex[0]);
             }
 
             if (checkOverlap[{tempVer1, tempVer2}] == 0 && checkOverlap[{tempVer2, tempVer1}] == 0)
             {
                 checkOverlap[{tempVer1, tempVer2}] = 1;
                 checkOverlap[{tempVer2, tempVer1}] = 1;
-                adjNeighborList[vertexIndex[1]].push_back(vertexIndex[2]);
-                adjNeighborList[vertexIndex[2]].push_back(vertexIndex[1]);
+                adjNeighborList[vertexPosIndex[1]].push_back(vertexPosIndex[2]);
+                adjNeighborList[vertexPosIndex[2]].push_back(vertexPosIndex[1]);
             }
 
             ++faceNum;
@@ -809,53 +829,65 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
 
     // 인덱싱 과정
     // 각 삼각형의 꼭짓점을 모두 순회
-    for (int i = 0; i < vertexIndices.size(); i++)
+    /*
+    for (int i = 0; i < vertexPosIndices.size(); i++)
     {
-        unsigned int vertexIdx = vertexIndices[i];
+        //unsigned int vertexIdx = vertexPosIndices[i];
         unsigned int normalIdx = normalIndices[i];
-        // obj는 1부터 시작하지만, C++의 index는 0부터 시작하기 때문에
-        point3 vertex = tempVertices[vertexIdx - 1];
-        point3 normal = tempNormals[normalIdx - 1];
+   
+        //point3 vertex = verticesPosition[vertexIdx - 1];
+        point3 normal = verticesNormals[normalIdx];
 
-        vertices.push_back(vertex);
+        //vertices.push_back(vertex);
         normals.push_back(normal);
 
         // 텍스쳐 좌표 인덱싱
-        unsigned int textureCoordIdx = textureIndices[i];
-        point3 texture = tempTextureCoord[textureCoordIdx - 1];
-        textureCoord.push_back(texture);
-    }
-
-    // 텍스쳐 좌표 인덱싱
-    /*
-    for (int i = 0; i < textureIndices.size(); i++)
-    {
-        unsigned int textureCoordIdx = textureIndices[i];
-        point3 texture = tempTextureCoord[textureCoordIdx - 1];
-        textureCoord.push_back(texture);
+        if (verticesTexCoord.size() != 0) // 텍스처 좌표가 있는 모델의 경우
+        {
+            unsigned int textureCoordIdx = textureIndices[i];
+            point3 texture = verticesTexCoord[textureCoordIdx];
+            textureCoord.push_back(texture);
+        }
     }
     */
 
-    //textureCoord = tempTextureCoord;
-
-
     // 3D Unsharp Masking을 위한 텍스쳐
-    int verticesNum = tempVertices.size() + 1; // 점은 0번부터 시작하므로 임시 +1
+    int vertexPosNum = verticesPosition.size();
     //neighborNum.assign(verticesNum, 0);
     int neighborSize;
-    int tempNextIdx = 0;
+    int vertexPerNormalSize;
+    int tempNeighborIdx = 0;
 
-    for (int i = 0; i < verticesNum; ++i)
+    for (int i = 0; i < vertexPosNum; ++i)
     {
         neighborSize = adjNeighborList[i].size();
-        neighborNum[i] = neighborSize * 10;
+        vertexPerNormalSize = normalIndices[i].size();
+        neighborNum[i] = neighborSize;
 
         for (int j = 0; j < neighborSize; ++j)
         {
-            neighborIdxList[tempNextIdx] = adjNeighborList[i][j];
-            ++tempNextIdx;
+            neighborIdxList[tempNeighborIdx] = adjNeighborList[i][j];
+            ++tempNeighborIdx;
         }
-            //neighborIdxList.push_back(adjNeighborList[i][j]);
+
+        // normal 평균 내주기
+        float normalSize = sqrt(pow(vertexPerAvgNormal[i].x, 2) + pow(vertexPerAvgNormal[i].y, 2) + pow(vertexPerAvgNormal[i].z, 2));
+        vertexPerAvgNormal[i].x /= normalSize;
+        vertexPerAvgNormal[i].y /= normalSize;
+        vertexPerAvgNormal[i].z /= normalSize;
+
+        /*
+        point3 tempNormalSum = {0,0,0};
+        int tempNormalIdx;
+        for (int j = 0; j < vertexPerNormalSize; ++j)
+        {
+            tempNormalIdx = normalIndices[i][j];
+            tempNormalSum.x += verticesNormals[tempNormalIdx].x;
+            tempNormalSum.y += verticesNormals[tempNormalIdx].y;
+            tempNormalSum.z += verticesNormals[tempNormalIdx].z;
+        }
+        vertexPerAvgNormal[i] = tempNormalSum;
+        */
     }
 
     fclose(fp);

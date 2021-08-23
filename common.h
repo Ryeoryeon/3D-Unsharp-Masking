@@ -9,6 +9,7 @@ struct point3
     float z;
 };
 
+
 struct point2
 {
     point2(float a, float b) : x(a), y(b) {};

@@ -1,61 +1,45 @@
 #version 330 core
 
-// Interpolated values from the vertex shaders
+in vec2 texCoord;
 in vec4 diffuseColor;
 in vec3 ambientColor;
 in vec3 specularColor;
 
 in vec3 Position_worldspace;
-in vec3 Normal_cameraspace;
 in vec3 EyeDirection_cameraspace;
 in vec3 LightDirection_cameraspace;
-in vec3 Normal;
+in vec3 Normal_cameraspace;
 
-// 3D Unsharp Masking
-in int currentNeighborNum;
-in int neighborIdx;
-int accumNum = 0;
+in float currentNeighborNum;
 
-// Ouput data
-out vec4 color;
-
+uniform sampler2D neighborNum;
+uniform sampler2D neighborIdxList;
 uniform vec3 LightPosition_worldspace;
 
-void main(){
-	vec3 LightColor = vec3(1,1,1);
-	float LightPower = 30.0f;
+out vec4 color;
 
-	// Material properties
-	vec3 MaterialDiffuseColor = vec3(diffuseColor);
-	vec3 MaterialSpecularColor = specularColor;
-	vec3 ModifiedAmbientColor = clamp(ambientColor, 0.1, 1.0) * MaterialDiffuseColor;
+void main()
+{
+    vec3 LightColor = vec3(1,1,1);
+    float LightPower = 30.0f;
 
-	vec3 n = normalize(Normal);
-	vec3 l = normalize(LightDirection_cameraspace);
-	vec3 E = normalize(EyeDirection_cameraspace); // 카메라를 바라보는 벡터
-	vec3 R = reflect (-l, n); // 삼각형이 빛을 반사하는 방향
-	
-	// Distance to the light
-	float distance = length( LightPosition_worldspace - Position_worldspace );
-	float cosAlpha = clamp( dot( E,R ), 0,1 );
-	float cosTheta = clamp( dot( n,l), 0,1 );
+    // *** for phong illumination
+    vec3 MaterialDiffuseColor = vec3(diffuseColor);
+    vec3 ModifiedAmbientColor = clamp(ambientColor, 0.1, 1.0) * MaterialDiffuseColor;
 
-	vec3 tempColor = ModifiedAmbientColor + 
-	MaterialDiffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + MaterialSpecularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
+    vec3 n = normalize(Normal_cameraspace);
+    vec3 l = normalize(LightDirection_cameraspace);
+    vec3 E = normalize(EyeDirection_cameraspace);
+    vec3 R = reflect (-l, n);
 
-	// 완전히 다시 손 봐야 하는 코드
-	if(accumNum == currentNeighborNum)
-	{
-		vec3 neighborSave = vec3(0, 0, 0);
-		for (int i = 0; i < currentNeighborNum; ++i)
-		{
-			neighborSave += MaterialDiffuseColor[neighborIdx];
-		}
-		accumNum = 0;
-		neighborSave /= currentNeighborNum;
-		color = vec4(neighborSave, 1);
-	}
-	//
+    float distance = length( LightPosition_worldspace - Position_worldspace );
+    float cosAlpha = clamp( dot( E,R ), 0,1 );
+    float cosTheta = clamp( dot( n,l), 0,1 );
 
-	//color = vec4(tempColor, 1);
+    vec3 illuminationColor = ModifiedAmbientColor + MaterialDiffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + specularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
+    // ***
+
+    //color = vec4(illuminationColor, 1);
+    color = vec4(currentNeighborNum, currentNeighborNum, currentNeighborNum, 1);
+    //color = texture(neighborNum, texCoord);
 }
