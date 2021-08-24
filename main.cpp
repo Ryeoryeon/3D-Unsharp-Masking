@@ -15,7 +15,7 @@
 #include "common.h"
 
 const int SCREENSIZE = 1024;
-const int TEXTURESIZE = 512;
+const int TEXTURESIZE = 1024;
 
 static int tripleFace;
 glm::vec3 lightPos = glm::vec3(3, 2, 1);
@@ -38,8 +38,6 @@ GLuint diffuseColorBufferID;
 GLuint ambientColorBufferID;
 GLuint specularColorBufferID;
 GLuint NormalBufferID;
-//GLuint NeighborNumID;
-//GLuint NeighborIdxID;
 
 GLuint vertexBuffer; // vertex buffer Object
 GLuint elementBuffer; // element buffer
@@ -59,8 +57,10 @@ static std::vector<point4> boundingBoxCoordinate;
 
 // 3D Unsharp Masking을 위해
 static std::vector<std::vector<int>> adjNeighborList; // 두 텍스쳐를 위한 인접 리스트
-static GLubyte neighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 각 점에 대한 이웃의 개수를 저장하는 텍스쳐
-static GLuint neighborIdxList[TEXTURESIZE * TEXTURESIZE] = {0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스쳐
+static GLint neighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 각 점에 대한 이웃의 개수를 저장하는 텍스쳐
+static GLint neighborIdxList[TEXTURESIZE * TEXTURESIZE] = {0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스쳐
+static GLfloat vertexNormalTex[TEXTURESIZE * TEXTURESIZE * 3] = {0, }; // 각 점당 normal의 평균이 저장되도록 (텍스처 접근용)
+static GLint accumNeighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 누적된 이웃의 개수
 static std::map <std::pair<int, int>, int> checkOverlap; // 텍스쳐에서 중복되는 점 저장을 피하기 위한 map
 
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path);
@@ -103,9 +103,12 @@ void init()
     //const char* objName = "model_normalized.obj";
     //const char* mtlName = "model_normalized.mtl";   
 
-    const char* objName = "bunny(withMtl).obj";
-    //const char* objName = "bunny(moreFace_withMtl).obj";
+    //const char* objName = "bunny(withMtl).obj";
+    const char* objName = "bunny(moreFace_withMtl).obj";
     const char* mtlName = "bunny.mtl";
+
+    //const char* objName = "armadillo.obj";
+    //const char* mtlName = "armadillo.mtl";
 
     int faceNum = 0;
     bool res = loadObjMtl(objName, mtlName, faceNum);
@@ -150,6 +153,7 @@ void init()
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
     glBufferData(GL_ARRAY_BUFFER, vertexPerAvgNormal.size() * sizeof(point3), &vertexPerAvgNormal[0], GL_STATIC_DRAW);
     //
+
     // *** 3D unsharp Masking
     // texture Coordinate
     if (textureCoord.size() != 0)
@@ -160,19 +164,10 @@ void init()
     }
 
     // Texture
+    // (1) : 이웃의 개수
     GLuint neighborNumTexID;
     glGenTextures(1, &neighborNumTexID);
     glBindTexture(GL_TEXTURE_2D, neighborNumTexID);
-
-    /*
-    GLuint neighborNumIdxID;
-    glGenTextures(1, &neighborNumIdxID);
-    glBindTexture(GL_TEXTURE_2D, neighborNumIdxID);
-
-    GLuint vertexPerNormalID;
-    glGenTextures(1, &vertexPerNormalID);
-    glBindTexture(GL_TEXTURE_2D, vertexPerNormalID);
-    */
 
     // set the texture wrapping parameters
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -182,19 +177,55 @@ void init()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    //memset(neighborNum, 255, sizeof(neighborNum));
-    //neighborNum[0] = 50;
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, neighborNum);
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_RED, GL_UNSIGNED_BYTE, neighborNum);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, neighborNum);
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_UNSIGNED_INT, neighborIdxList);
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_LUMINANCE, GL_FLOAT, vertexPerAvgNormal);
+    // (2) : 이웃의 인덱스
+    GLuint neighborNumIdxID;
+    glGenTextures(1, &neighborNumIdxID);
+    glBindTexture(GL_TEXTURE_2D, neighborNumIdxID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, neighborIdxList);
+
+    // (3) : vertex normal
+    GLuint vertexPerNormalID;
+    glGenTextures(1, &vertexPerNormalID);
+    glBindTexture(GL_TEXTURE_2D, vertexPerNormalID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, vertexNormalTex);
+
+    // (4) : 누적된 이웃의 개수
+    GLuint accumNeighborNumTexID;
+    glGenTextures(1, &accumNeighborNumTexID);
+    glBindTexture(GL_TEXTURE_2D, accumNeighborNumTexID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, accumNeighborNum);
 
     // 3. shader program
-    //programID = LoadShaders("vshader.vertexshader", "fshader.fragmentshader");
-    //programID = LoadShaders("texture.vertexshader", "texture.fragmentshader");
     programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
-    glUniform1i(glGetUniformLocation(programID, "neighborNum"), 0);
-    //glUniform1i(glGetUniformLocation(programID, "neighborIdxList"), 1);
+
+    GLuint texLocation = glGetUniformLocation(programID, "neighborNum");
+    GLuint tex2Location = glGetUniformLocation(programID, "neighborIdxList");
+    GLuint tex3Location = glGetUniformLocation(programID, "vertexNormalTex");
+    GLuint tex4Location = glGetUniformLocation(programID, "accumNeighborNum");
 
     // 코드는 죄가 없다
     glEnable(GL_DEPTH_TEST);
@@ -204,6 +235,21 @@ void init()
 
     glUseProgram(programID);
 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, neighborNumTexID);
+    glUniform1i(texLocation, 0);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, neighborNumIdxID);
+    glUniform1i(tex2Location, 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, vertexPerNormalID);
+    glUniform1i(tex3Location, 2);
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, accumNeighborNumTexID);
+    glUniform1i(tex4Location, 3);
 }
 
 void mydisplay()
@@ -268,7 +314,7 @@ void myreshape(int width, int height)
         (float)width / (float)height, 0.1f, 100.0f);
 
     View = glm::lookAt(
-        glm::vec3(3, 4, 3), // Camera in World Space
+        glm::vec3(0, 2, 8), // Camera in World Space
         //glm::vec3(3, 4, 3), // Camera in World Space
         glm::vec3(0, 0, 0), // and looks at the origin
         glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
@@ -857,12 +903,17 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     int neighborSize;
     int vertexPerNormalSize;
     int tempNeighborIdx = 0;
+    int tempNormalIdx = 0;
 
     for (int i = 0; i < vertexPosNum; ++i)
     {
         neighborSize = adjNeighborList[i].size();
         vertexPerNormalSize = normalIndices[i].size();
         neighborNum[i] = neighborSize;
+        if (i == 1)
+            accumNeighborNum[i] = neighborNum[i-1];
+
+        accumNeighborNum[i] = accumNeighborNum[i-1] + neighborNum[i-1];
 
         for (int j = 0; j < neighborSize; ++j)
         {
@@ -876,18 +927,13 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         vertexPerAvgNormal[i].y /= normalSize;
         vertexPerAvgNormal[i].z /= normalSize;
 
-        /*
-        point3 tempNormalSum = {0,0,0};
-        int tempNormalIdx;
-        for (int j = 0; j < vertexPerNormalSize; ++j)
-        {
-            tempNormalIdx = normalIndices[i][j];
-            tempNormalSum.x += verticesNormals[tempNormalIdx].x;
-            tempNormalSum.y += verticesNormals[tempNormalIdx].y;
-            tempNormalSum.z += verticesNormals[tempNormalIdx].z;
-        }
-        vertexPerAvgNormal[i] = tempNormalSum;
-        */
+        // texture 저장
+        vertexNormalTex[tempNormalIdx] = vertexPerAvgNormal[i].x;
+        ++tempNormalIdx;
+        vertexNormalTex[tempNormalIdx] = vertexPerAvgNormal[i].y;
+        ++tempNormalIdx;
+        vertexNormalTex[tempNormalIdx] = vertexPerAvgNormal[i].z;
+        ++tempNormalIdx;
     }
 
     fclose(fp);
