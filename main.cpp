@@ -13,17 +13,22 @@
 #include <cstdlib>
 #include <iostream>
 #include "common.h"
+#include <opencv2/opencv.hpp>
 
 const int SCREENSIZE = 1024;
 const int TEXTURESIZE = 1024;
 
 static int tripleFace;
-glm::vec3 lightPos = glm::vec3(3, 2, 1);
+std::vector<glm::vec3> lightPos = { glm::vec3(0, 5, 5) , glm::vec3(4, 4, 0), glm::vec3(3, 1, 3), glm::vec3(-2, 5, 3)};
 
 float SCALINGFACTOR = 1.8;
-//float SCALINGFACTOR = 1.4;
+//float SCALINGFACTOR = 0.63f;
 static double boundMaxDist;
 static point3 boundingCent;
+
+// timer 함수 연관
+float angle; // 회전 각도
+int lightIdx = 0; // 조명의 번호
 
 glm::mat4 Projection;
 glm::mat4 View;
@@ -41,7 +46,6 @@ GLuint NormalBufferID;
 
 GLuint vertexBuffer; // vertex buffer Object
 GLuint elementBuffer; // element buffer
-//GLuint VAO; // vertex array Object
 
 std::vector<point3> verticesPosition;
 static std::vector<unsigned int> vertexPosIndices;
@@ -73,8 +77,33 @@ bool loadObjMtl(const char* objName, const char* mtlName, int& faceNum);
 double boundingBoxDist(point3& boxCent);
 void boundingBox();
 double getDist(point3 p1, point3 p2);
+void openglToPngSave(int outputIdx);
 
 using namespace std;
+
+void timer(int value)
+{
+    static int outputIdx = -1; // 빈 화면 건너뛰기
+
+    glutPostRedisplay(); // 윈도우를 다시 그리도록 요청하는 함수
+    glutTimerFunc(45, timer, 0);
+    angle += glm::radians(45.0f);
+
+    ++outputIdx;
+
+    if (outputIdx != 0 && outputIdx <= 8)
+        openglToPngSave(outputIdx - 1);
+
+    // 360도 회전이 끝나면 다음 조명으로 변경 (0~11, 12~23..)
+    else if (outputIdx != 0 && outputIdx % 8 == 0)
+    {
+        ++lightIdx;
+        outputIdx = 0;
+
+        if (lightIdx == lightPos.size())
+            exit(0);
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -83,6 +112,7 @@ int main(int argc, char** argv)
     glutInitWindowPosition(500, 0);
     glutCreateWindow("3D Unsharp Masking");
     glutInitDisplayMode(GLUT_DEPTH | GLUT_SINGLE | GLUT_RGBA);
+    glutTimerFunc(0, timer, 0);
     glutDisplayFunc(mydisplay);
     glutReshapeFunc(myreshape);
 
@@ -99,16 +129,21 @@ int main(int argc, char** argv)
 void init()
 {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    //glClearColor(1.0f, 0.5f, 0.5f, 0.0f);
     // .obj, .mtl 로딩 코드
-    //const char* objName = "model_normalized.obj";
-    //const char* mtlName = "model_normalized.mtl";   
 
     //const char* objName = "bunny(withMtl).obj";
-    const char* objName = "bunny(moreFace_withMtl).obj";
-    const char* mtlName = "bunny.mtl";
+    //const char* objName = "bunny(moreFace_withMtl).obj";
+    //const char* mtlName = "bunny.mtl";
 
     //const char* objName = "armadillo.obj";
     //const char* mtlName = "armadillo.mtl";
+
+    //const char* objName = "sphere.obj";
+    //const char* mtlName = "sphere.mtl";
+
+    const char* objName = "utahTeapot.obj";
+    const char* mtlName = "utahTeapot.mtl";
 
     int faceNum = 0;
     bool res = loadObjMtl(objName, mtlName, faceNum);
@@ -148,7 +183,8 @@ void init()
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
     glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point3), &specularColors[0], GL_STATIC_DRAW);
 
-    // normal
+    // normal (face)
+    // 1:1 vertex normal은 텍스처로 전달
     glGenBuffers(1, &NormalBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
     glBufferData(GL_ARRAY_BUFFER, vertexPerAvgNormal.size() * sizeof(point3), &vertexPerAvgNormal[0], GL_STATIC_DRAW);
@@ -315,7 +351,6 @@ void myreshape(int width, int height)
 
     View = glm::lookAt(
         glm::vec3(0, 2, 8), // Camera in World Space
-        //glm::vec3(3, 4, 3), // Camera in World Space
         glm::vec3(0, 0, 0), // and looks at the origin
         glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
     );
@@ -328,6 +363,7 @@ void myreshape(int width, int height)
 void transform()
 {
     Model = glm::mat4(1.0f);
+    Model = glm::rotate(Model, angle, glm::vec3(0, 1, 0));
     mvp = Projection * View * Model;
 
     GLuint MatrixID = glGetUniformLocation(programID, "MVP");
@@ -342,16 +378,7 @@ void transform()
     glUniformMatrix4fv(TransformedMatrixID, 1, GL_FALSE, &transformedMatrix[0][0]);
 
     GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
-    glUniform3f(LightID, lightPos.x, lightPos.y, lightPos.z);
-
-    /*
-    GLuint NeighborNumSizeID = glGetUniformLocation(programID, "NeighborNumSize");
-    glUniform1i(NeighborNumSizeID, neighborNum.size());
-
-    GLuint NeighborIdxSizeID = glGetUniformLocation(programID, "NeighborIdxListSize");
-    glUniform1i(NeighborIdxSizeID, neighborNum.size());
-    */
-
+    glUniform3f(LightID, lightPos[lightIdx].x, lightPos[lightIdx].y, lightPos[lightIdx].z);
 }
 
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path)
@@ -645,11 +672,14 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     }
 
     //std::vector<unsigned int> textureIndices, normalIndices;
+    std::vector<unsigned int> vertexIndices;
     std::vector<unsigned int> textureIndices;
+    //std::vector<unsigned int> normalIndices;
+    std::vector<std::vector<unsigned int>> normalIndices;
 
     // vertex : normal 1:1 대응을 위해 (#average)
-    std::vector<std::vector<unsigned int>> normalIndices;
     std::map <std::pair<int, int>, int> checkOverlapNormal;
+    std::vector<int> vertexPerFace; // 각 점에서 평균 노말 계산을 위해 대응되는 면의 개수
 
     //std::vector<point3> verticesPosition;
     std::vector<point3> verticesNormals; // normal의 값 그 자체들이 저장
@@ -739,9 +769,10 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 diffuseColors.resize(vertexPosNum);
                 ambientColors.resize(vertexPosNum);
                 specularColors.resize(vertexPosNum);
-                normalIndices.resize(vertexPosNum); // 기존 vn index 저장
+                //normalIndices.resize(vertexPosNum); // 기존 vn index 저장
 
                 vertexPerAvgNormal.assign(vertexPosNum, { 0, 0, 0 }); // face의 avg normal 저장
+                vertexPerFace.assign(vertexPosNum, 0);
                 faceReadingStart = true;
             }
 
@@ -835,6 +866,9 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
                 diffuseColors[vertexPosIndex[i]] = mtlData[materialPointer].Kd;
                 ambientColors[vertexPosIndex[i]] = mtlData[materialPointer].Ka;
                 specularColors[vertexPosIndex[i]] = mtlData[materialPointer].Ks;
+
+                // 호출되는 점에 대해 면의 개수 증가 (평균 작업 위해)
+                ++vertexPerFace[vertexPosIndex[i]];
             }
 
             // 1-ring neighborhood를 위한 인접 리스트 삽입
@@ -875,6 +909,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
 
     // 인덱싱 과정
     // 각 삼각형의 꼭짓점을 모두 순회
+
     /*
     for (int i = 0; i < vertexPosIndices.size(); i++)
     {
@@ -901,14 +936,12 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     int vertexPosNum = verticesPosition.size();
     //neighborNum.assign(verticesNum, 0);
     int neighborSize;
-    int vertexPerNormalSize;
     int tempNeighborIdx = 0;
     int tempNormalIdx = 0;
 
     for (int i = 0; i < vertexPosNum; ++i)
     {
         neighborSize = adjNeighborList[i].size();
-        vertexPerNormalSize = normalIndices[i].size();
         neighborNum[i] = neighborSize;
         if (i == 1)
             accumNeighborNum[i] = neighborNum[i-1];
@@ -922,6 +955,11 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         }
 
         // normal 평균 내주기
+        vertexPerAvgNormal[i].x /= vertexPerFace[i];
+        vertexPerAvgNormal[i].y /= vertexPerFace[i];
+        vertexPerAvgNormal[i].z /= vertexPerFace[i];
+
+        // 사이즈 1 정규화
         float normalSize = sqrt(pow(vertexPerAvgNormal[i].x, 2) + pow(vertexPerAvgNormal[i].y, 2) + pow(vertexPerAvgNormal[i].z, 2));
         vertexPerAvgNormal[i].x /= normalSize;
         vertexPerAvgNormal[i].y /= normalSize;
@@ -940,4 +978,54 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     fclose(fp2);
 
     return true;
+}
+
+void openglToPngSave(int outputIdx)
+{
+    static int fileNo = 0;
+    int bitsNum;
+    GLubyte* bits; //RGB bits
+    GLint captureImage[4]; //current viewport
+
+    //get current viewport
+    glGetIntegerv(GL_VIEWPORT, captureImage); // 이미지 크기 알아내기
+
+    int rows = captureImage[3];
+    int cols = captureImage[2];
+
+    bitsNum = 3 * cols * rows;
+    bits = new GLubyte[bitsNum]; // opengl에서 읽어오는 비트
+
+    //read pixel from frame buffer
+    glFinish(); //finish all commands of OpenGL
+
+    glPixelStorei(GL_PACK_ALIGNMENT, 1); //or glPixelStorei(GL_PACK_ALIGNMENT,4);
+    glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+    glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+    glReadPixels(0, 0, cols, rows, GL_BGR_EXT, GL_UNSIGNED_BYTE, bits);
+
+    cv::Mat outputImage(rows, cols, CV_8UC3);
+    int currentIdx;
+
+    for (int i = 0; i < outputImage.rows; i++)
+    {
+        for (int j = 0; j < outputImage.cols; j++)
+        {
+            // stores image from top to bottom, left to right
+            currentIdx = (rows - i - 1) * 3 * cols + j * 3; // +0
+
+            outputImage.at<cv::Vec3b>(i, j)[0] = (uchar)(bits[currentIdx]);
+            outputImage.at<cv::Vec3b>(i, j)[1] = (uchar)(bits[++currentIdx]); // +1
+            outputImage.at<cv::Vec3b>(i, j)[2] = (uchar)(bits[++currentIdx]); // +2
+        }
+    }
+
+    char filename[100];
+    //sprintf(filename, "%c_output_%d_%d.bmp", RENDERMODE, idx, lightIdx);
+    sprintf(filename, "output[%i]_%d.png", lightIdx, fileNo++);
+    imwrite(filename, outputImage);
+
+
+    delete[] bits;
 }

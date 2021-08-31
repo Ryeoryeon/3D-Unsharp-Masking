@@ -14,9 +14,10 @@ out vec3 specularColor;
 out vec3 Position_worldspace;
 out vec3 EyeDirection_cameraspace;
 out vec3 LightDirection_cameraspace;
-out vec3 Normal_cameraspace;
+out vec3 vertexNormal_cameraspace;
 
 out vec3 unsharpVector;
+out vec3 currentNormal_cameraspace;
 
 uniform mat4 MVP;
 uniform mat4 V;
@@ -47,7 +48,7 @@ void main()
     vec3 LightPosition_cameraspace = (V * vec4(LightPosition_worldspace, 1)).xyz;
     LightDirection_cameraspace = LightPosition_cameraspace + EyeDirection_cameraspace;
 
-    Normal_cameraspace = ( V * M * vec4(vertexNormal_modelspace,0)).xyz;
+    vertexNormal_cameraspace = ( V * M * vec4(vertexNormal_modelspace,0)).xyz;
 
     // *** get 1-ring neighborhood number
     float colIdx = gl_VertexID/TEXTURESIZE_FLOAT;
@@ -103,7 +104,8 @@ void main()
 
     // *** 현재 vertex의 illumination color 계산
     vec3 currentNormal = texture(vertexNormalTex, vec2(colIdx, rowIdx)).rgb;
-    vec3 currentNormal_cameraspace = ( V * M * vec4(currentNormal, 0)).xyz;
+    currentNormal_cameraspace = ( V * M * vec4(currentNormal, 0)).xyz;
+    //vec3 currentNormal_cameraspace = ( V * M * vec4(currentNormal, 0)).xyz;
     vec3 n = normalize(currentNormal_cameraspace);
     vec3 R = reflect (-l, n);
     float cosAlpha = clamp( dot( E,R ), 0,1 );
@@ -113,7 +115,8 @@ void main()
 
     // *** 평균과의 차 구하고, 내보내기
     unsharpVector = currentColor - avgIntensity;
+    //unsharpVector *= 2; // 배수
     unsharpVector += currentColor;
 
-    //unsharpVector = currentColor; // 원래 color
+    //unsharpVector = currentColor; // 원래 color 내보내기
 }
