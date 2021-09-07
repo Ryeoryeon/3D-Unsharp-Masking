@@ -65,6 +65,7 @@ static GLint neighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 각 점에 대한 이�
 static GLint neighborIdxList[TEXTURESIZE * TEXTURESIZE] = {0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스쳐
 static GLfloat vertexNormalTex[TEXTURESIZE * TEXTURESIZE * 3] = {0, }; // 각 점당 normal의 평균이 저장되도록 (텍스처 접근용)
 static GLint accumNeighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 누적된 이웃의 개수
+static GLfloat vertexPosTex[TEXTURESIZE * TEXTURESIZE * 3] = { 0, }; // 이웃의 위치에 접근하기 위한 위치 저장 텍스처
 static std::map <std::pair<int, int>, int> checkOverlap; // 텍스쳐에서 중복되는 점 저장을 피하기 위한 map
 
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path);
@@ -217,9 +218,9 @@ void init()
     //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_RED, GL_UNSIGNED_BYTE, neighborNum);
 
     // (2) : 이웃의 인덱스
-    GLuint neighborNumIdxID;
-    glGenTextures(1, &neighborNumIdxID);
-    glBindTexture(GL_TEXTURE_2D, neighborNumIdxID);
+    GLuint neighborNumIdxTexID;
+    glGenTextures(1, &neighborNumIdxTexID);
+    glBindTexture(GL_TEXTURE_2D, neighborNumIdxTexID);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -230,9 +231,9 @@ void init()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, neighborIdxList);
 
     // (3) : vertex normal
-    GLuint vertexPerNormalID;
-    glGenTextures(1, &vertexPerNormalID);
-    glBindTexture(GL_TEXTURE_2D, vertexPerNormalID);
+    GLuint vertexPerNormalTexID;
+    glGenTextures(1, &vertexPerNormalTexID);
+    glBindTexture(GL_TEXTURE_2D, vertexPerNormalTexID);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -255,13 +256,28 @@ void init()
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, accumNeighborNum);
 
+    // (5) : 이웃한 점들의 위치에 접근하기 위한 vertex position [임시]
+    GLuint vertexPerPosTexID;
+    glGenTextures(1, &vertexPerPosTexID);
+    glBindTexture(GL_TEXTURE_2D, vertexPerPosTexID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, vertexPosTex);
+
     // 3. shader program
-    programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
+    programID = LoadShaders("1ringNeiborhood_bilateral.vertexshader", "1ringNeiborhood.fragmentshader");
+    //programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
 
     GLuint texLocation = glGetUniformLocation(programID, "neighborNum");
     GLuint tex2Location = glGetUniformLocation(programID, "neighborIdxList");
     GLuint tex3Location = glGetUniformLocation(programID, "vertexNormalTex");
     GLuint tex4Location = glGetUniformLocation(programID, "accumNeighborNum");
+    GLuint tex5Location = glGetUniformLocation(programID, "vertexPosTex"); // 이웃한 점 위치 접근을 위해
 
     // 코드는 죄가 없다
     glEnable(GL_DEPTH_TEST);
@@ -276,16 +292,20 @@ void init()
     glUniform1i(texLocation, 0);
 
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, neighborNumIdxID);
+    glBindTexture(GL_TEXTURE_2D, neighborNumIdxTexID);
     glUniform1i(tex2Location, 1);
 
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, vertexPerNormalID);
+    glBindTexture(GL_TEXTURE_2D, vertexPerNormalTexID);
     glUniform1i(tex3Location, 2);
 
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, accumNeighborNumTexID);
     glUniform1i(tex4Location, 3);
+
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, vertexPerPosTexID);
+    glUniform1i(tex5Location, 4);
 }
 
 void mydisplay()

@@ -1,10 +1,5 @@
 #version 330 core
 
-in vec2 texCoord;
-in vec4 diffuseColor;
-in vec3 ambientColor;
-in vec3 specularColor;
-
 in vec3 Position_worldspace;
 in vec3 EyeDirection_cameraspace;
 in vec3 LightDirection_cameraspace;
