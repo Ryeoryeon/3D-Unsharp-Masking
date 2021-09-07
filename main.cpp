@@ -18,35 +18,45 @@
 const int SCREENSIZE = 1024;
 const int TEXTURESIZE = 1024;
 
-static int tripleFace;
 std::vector<glm::vec3> lightPos = { glm::vec3(0, 5, 5) , glm::vec3(4, 4, 0), glm::vec3(3, 1, 3), glm::vec3(-2, 5, 3)};
 
 float SCALINGFACTOR = 1.8;
 //float SCALINGFACTOR = 0.63f;
-static double boundMaxDist;
-static point3 boundingCent;
 
 // timer 함수 연관
 float angle; // 회전 각도
 int lightIdx = 0; // 조명의 번호
 
+Object firstObj;
+Object secondObj;
+
 glm::mat4 Projection;
 glm::mat4 View;
 glm::mat4 Model;
 glm::mat4 mvp;
-glm::mat4 transformedMatrix;
+
+glm::mat4 transformMatrix;
+glm::mat4 transformMatrixSecond;
 
 GLuint programID;
-GLuint VertexBufferID;
+// first Obj
 GLuint TextureCoordID;
 GLuint diffuseColorBufferID;
 GLuint ambientColorBufferID;
 GLuint specularColorBufferID;
 GLuint NormalBufferID;
-
 GLuint vertexBuffer; // vertex buffer Object
 GLuint elementBuffer; // element buffer
 
+// second Obj
+GLuint diffuseColorBuffSecond;
+GLuint ambientColorBuffSecond;
+GLuint specularColorBuffSecond;
+GLuint NormalBuffSecond;
+GLuint vertexBuffSecond; // vertex buffer Object
+GLuint elementBuffSecond; // element buffer
+
+/*
 std::vector<point3> verticesPosition;
 static std::vector<unsigned int> vertexPosIndices;
 static std::vector<point3> vertexPerAvgNormal; // normals
@@ -54,29 +64,23 @@ static std::vector<point3> textureCoord;
 static std::vector<point3> specularColors;
 static std::vector<point3> ambientColors;
 static std::vector<point4> diffuseColors;
-
-// 바운딩 박스 크기 조정 이후
-static std::vector<point3> transformedVertices;
-static std::vector<point4> boundingBoxCoordinate;
+*/
 
 // 3D Unsharp Masking을 위해
-static std::vector<std::vector<int>> adjNeighborList; // 두 텍스쳐를 위한 인접 리스트
 static GLint neighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 각 점에 대한 이웃의 개수를 저장하는 텍스쳐
 static GLint neighborIdxList[TEXTURESIZE * TEXTURESIZE] = {0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스쳐
 static GLfloat vertexNormalTex[TEXTURESIZE * TEXTURESIZE * 3] = {0, }; // 각 점당 normal의 평균이 저장되도록 (텍스처 접근용)
 static GLint accumNeighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 누적된 이웃의 개수
 static GLfloat vertexPosTex[TEXTURESIZE * TEXTURESIZE * 3] = { 0, }; // 이웃의 위치에 접근하기 위한 위치 저장 텍스처
-static std::map <std::pair<int, int>, int> checkOverlap; // 텍스쳐에서 중복되는 점 저장을 피하기 위한 map
 
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path);
 void init();
 void transform();
 void mydisplay();
 void myreshape(int width, int height);
-bool loadObjMtl(const char* objName, const char* mtlName, int& faceNum);
+bool loadObjMtl(const char* objName, const char* mtlName, Object & obj);
 
-double boundingBoxDist(point3& boxCent);
-void boundingBox();
+glm::mat4 boundingBox(Object & obj);
 double getDist(point3 p1, point3 p2);
 void openglToPngSave(int outputIdx);
 
@@ -130,7 +134,6 @@ int main(int argc, char** argv)
 void init()
 {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    //glClearColor(1.0f, 0.5f, 0.5f, 0.0f);
     // .obj, .mtl 로딩 코드
 
     //const char* objName = "bunny(withMtl).obj";
@@ -140,65 +143,61 @@ void init()
     //const char* objName = "armadillo.obj";
     //const char* mtlName = "armadillo.mtl";
 
-    //const char* objName = "sphere.obj";
-    //const char* mtlName = "sphere.mtl";
-
     const char* objName = "utahTeapot.obj";
     const char* mtlName = "utahTeapot.mtl";
 
-    int faceNum = 0;
-    bool res = loadObjMtl(objName, mtlName, faceNum);
-    boundingBox();
-    tripleFace = faceNum * 3;
+    const char* secondObjName = "sphere.obj";
+    const char* secondMtlName = "sphere.mtl";
 
-    // 초기화 코드
-    /*
-    glGenVertexArrays(1, &VAO);
-    // 0. vertex array object 바인딩
-    glBindVertexArray(VAO);
-    */
+    bool res = loadObjMtl(objName, mtlName, firstObj);
+    //bool res2 = loadObjMtl(secondObjName, secondMtlName, secondObj);
 
+    transformMatrix = boundingBox(firstObj);
+
+    // ***** first obj
     // 1. 리스트를 버퍼에 복사
     // element
     glGenBuffers(1, &vertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point3), &verticesPosition[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point3), &firstObj.vertexPos[0], GL_STATIC_DRAW);
 
     // vertex element
     glGenBuffers(1, &elementBuffer); // 버퍼 생성
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, vertexPosIndices.size() * sizeof(unsigned int), &vertexPosIndices[0], GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, firstObj.vertexPosIndices.size() * sizeof(unsigned int), &firstObj.vertexPosIndices[0], GL_STATIC_DRAW);
 
     // diffuse
     glGenBuffers(1, &diffuseColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBufferID);
-    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point4), &diffuseColors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point4), &firstObj.diffuse[0], GL_STATIC_DRAW);
 
     // ambient
     glGenBuffers(1, &ambientColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, ambientColorBufferID);
-    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point3), &ambientColors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point3), &firstObj.ambient[0], GL_STATIC_DRAW);
 
     // specular
     glGenBuffers(1, &specularColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
-    glBufferData(GL_ARRAY_BUFFER, verticesPosition.size() * sizeof(point3), &specularColors[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point3), &firstObj.specular[0], GL_STATIC_DRAW);
 
     // normal (face)
     // 1:1 vertex normal은 텍스처로 전달
     glGenBuffers(1, &NormalBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
-    glBufferData(GL_ARRAY_BUFFER, vertexPerAvgNormal.size() * sizeof(point3), &vertexPerAvgNormal[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, firstObj.normal.size() * sizeof(point3), &firstObj.normal[0], GL_STATIC_DRAW);
     //
 
     // *** 3D unsharp Masking
     // texture Coordinate
+    /*
     if (textureCoord.size() != 0)
     {
         glGenBuffers(1, &TextureCoordID);
         glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
         glBufferData(GL_ARRAY_BUFFER, textureCoord.size() * sizeof(point3), &textureCoord[0], GL_STATIC_DRAW);
     }
+    */
 
     // Texture
     // (1) : 이웃의 개수
@@ -312,8 +311,8 @@ void mydisplay()
 {
     transform();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    // *** need to fill in this part
 
+    // ***** first obj
     // 2. 포인터 지정
     // vertex
     glEnableVertexAttribArray(0);
@@ -323,27 +322,28 @@ void mydisplay()
     glEnableVertexAttribArray(1);
     glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBufferID);
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    // normal
-    glEnableVertexAttribArray(2);
-    glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_TRUE, 0, (void*)0);
     // ambient
-    glEnableVertexAttribArray(3);
+    glEnableVertexAttribArray(2);
     glBindBuffer(GL_ARRAY_BUFFER, ambientColorBufferID);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     // specular
-    glEnableVertexAttribArray(4);
+    glEnableVertexAttribArray(3);
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    // normal
+    glEnableVertexAttribArray(4);
+    glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_TRUE, 0, (void*)0);
+    /*
     // texture Coordinate
+
     glEnableVertexAttribArray(5);
     glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
     glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    
-
+    */
     glDrawElements(
         GL_TRIANGLES,
-        vertexPosIndices.size(), // count
+        firstObj.vertexPosIndices.size(), // count
         GL_UNSIGNED_INT,
         (void*)0 // offset
     );
@@ -354,9 +354,8 @@ void mydisplay()
     glDisableVertexAttribArray(2);
     glDisableVertexAttribArray(3);
     glDisableVertexAttribArray(4);
-    glDisableVertexAttribArray(5);
+    //glDisableVertexAttribArray(5);
 
-    // ***
     //glFlush();
     glutSwapBuffers();
 
@@ -395,7 +394,7 @@ void transform()
 
     // 변환 행렬
     GLuint TransformedMatrixID = glGetUniformLocation(programID, "Transform");
-    glUniformMatrix4fv(TransformedMatrixID, 1, GL_FALSE, &transformedMatrix[0][0]);
+    glUniformMatrix4fv(TransformedMatrixID, 1, GL_FALSE, &transformMatrix[0][0]);
 
     GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
     glUniform3f(LightID, lightPos[lightIdx].x, lightPos[lightIdx].y, lightPos[lightIdx].z);
@@ -498,8 +497,10 @@ GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path)
     return ProgramID;
 }
 
-double boundingBoxDist(point3& boxCent)
+glm::mat4 boundingBox(Object & obj)
 {
+    point3 boxCent;
+
     float maxCoordX = std::numeric_limits<float>::min();
     float maxCoordY = std::numeric_limits<float>::min();
     float maxCoordZ = std::numeric_limits<float>::min();
@@ -511,9 +512,9 @@ double boundingBoxDist(point3& boxCent)
     int num = 0;
 
     // 바운딩 박스의 8개 좌표들 구하기
-    for (int i = 0; i < verticesPosition.size(); i++)
+    for (int i = 0; i < obj.vertexPos.size(); i++)
     {
-        point3 temp = verticesPosition[i];
+        point3 temp = obj.vertexPos[i];
 
         if (maxCoordX < temp.x)
             maxCoordX = temp.x;
@@ -538,24 +539,29 @@ double boundingBoxDist(point3& boxCent)
     boxCent.x = (maxCoordX + minCoordX) * 0.5f;
     boxCent.y = (maxCoordY + minCoordY) * 0.5f;
     boxCent.z = (maxCoordZ + minCoordZ) * 0.5f;
-
+    
+    // 바운딩 박스의 좌표들
+    std::vector<point4> boundingBoxCoordinate;
     boundingBoxCoordinate.push_back(point4(maxCoordX, maxCoordY, maxCoordZ, 1));
-
     boundingBoxCoordinate.push_back(point4(maxCoordX, maxCoordY, minCoordZ, 1));
     boundingBoxCoordinate.push_back(point4(maxCoordX, minCoordY, maxCoordZ, 1));
     boundingBoxCoordinate.push_back(point4(minCoordX, maxCoordY, maxCoordZ, 1));
-
     boundingBoxCoordinate.push_back(point4(maxCoordX, minCoordY, minCoordZ, 1));
     boundingBoxCoordinate.push_back(point4(minCoordX, maxCoordY, minCoordZ, 1));
     boundingBoxCoordinate.push_back(point4(minCoordX, minCoordY, maxCoordZ, 1));
-
     boundingBoxCoordinate.push_back(point4(minCoordX, minCoordY, minCoordZ, 1));
 
     // 바운딩 박스의 대각선 길이
     // maxCoordX를 기준으로 잡을 시, 절대 minCoordX와는 최대거리가 성립하지 않는다
-    float maxDist = getDist(point3(maxCoordX, maxCoordY, maxCoordZ), boxCent);
+    float boundingDist = getDist(point3(maxCoordX, maxCoordY, maxCoordZ), boxCent);
 
-    return maxDist;
+    float scalingSize = SCALINGFACTOR / boundingDist;
+    glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scalingSize, scalingSize, scalingSize));
+    glm::mat4 translateMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-boxCent.x, -boxCent.y, -boxCent.z));
+    glm::mat4 transformMatrix= scalingMatrix * translateMatrix;
+
+    // 행렬과 좌표 곱 계산은 GPU에서
+    return transformMatrix;
 }
 
 double getDist(point3 p1, point3 p2)
@@ -567,21 +573,7 @@ double getDist(point3 p1, point3 p2)
     return sqrt(xDist + yDist + zDist);
 }
 
-void boundingBox()
-{
-    // Bounding Box
-    boundMaxDist = boundingBoxDist(boundingCent);
-
-    float scalingSize = SCALINGFACTOR / boundMaxDist;
-    glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scalingSize, scalingSize, scalingSize));
-    glm::mat4 translateMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-boundingCent.x, -boundingCent.y, -boundingCent.z));
-    //glm::mat4 transformedMatrix = translateMatrix * scalingMatrix;
-    transformedMatrix = scalingMatrix * translateMatrix;
-
-    // 행렬과 좌표 곱 계산은 GPU에서
-}
-
-bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
+bool loadObjMtl(const char* objName, const char* mtlName, Object & obj)
 {
     // .mtl load
     FILE* fp2;
@@ -691,17 +683,20 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         return false;
     }
 
-    //std::vector<unsigned int> textureIndices, normalIndices;
+    int faceNum = 0;
     std::vector<unsigned int> vertexIndices;
     std::vector<unsigned int> textureIndices;
-    //std::vector<unsigned int> normalIndices;
     std::vector<std::vector<unsigned int>> normalIndices;
 
+    // *** 3D Unsharp Masking을 위해
     // vertex : normal 1:1 대응을 위해 (#average)
     std::map <std::pair<int, int>, int> checkOverlapNormal;
+    std::vector<std::vector<int>> adjNeighborList; // 두 텍스처를 위한 인접 리스트
     std::vector<int> vertexPerFace; // 각 점에서 평균 노말 계산을 위해 대응되는 면의 개수
+    // ***
 
     //std::vector<point3> verticesPosition;
+    std::map <std::pair<int, int>, int> checkOverlap; // 텍스처에서 중복되는 점 저장을 피하기 위한 map
     std::vector<point3> verticesNormals; // normal의 값 그 자체들이 저장
     std::vector<point3> verticesTexCoord; // vt의 값 그 자체들이 저장
 
@@ -723,7 +718,7 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         {
             point3 vertex;
             fscanf(fp, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z);
-            verticesPosition.push_back(vertex);
+            obj.vertexPos.push_back(vertex);
         }
 
         if (strcmp(lineHeader, "usemtl") == 0)
@@ -784,14 +779,14 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
 
             if (!faceReadingStart) // 처음으로 face를 읽어올 때, 인접 리스트와 색상 배열 크기 초기화
             {
-                int vertexPosNum = verticesPosition.size();
+                int vertexPosNum = obj.vertexPos.size();
                 adjNeighborList.resize(vertexPosNum);
-                diffuseColors.resize(vertexPosNum);
-                ambientColors.resize(vertexPosNum);
-                specularColors.resize(vertexPosNum);
+                obj.diffuse.resize(vertexPosNum);
+                obj.ambient.resize(vertexPosNum);
+                obj.specular.resize(vertexPosNum);
                 //normalIndices.resize(vertexPosNum); // 기존 vn index 저장
 
-                vertexPerAvgNormal.assign(vertexPosNum, { 0, 0, 0 }); // face의 avg normal 저장
+                obj.normal.assign(vertexPosNum, { 0, 0, 0 }); // face의 avg normal 저장
                 vertexPerFace.assign(vertexPosNum, 0);
                 faceReadingStart = true;
             }
@@ -861,13 +856,13 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             glm::vec3 forFaceNormalVec1;
             glm::vec3 forFaceNormalVec2;
 
-            forFaceNormalVec1.x = verticesPosition[vertexPosIndex[1]].x - verticesPosition[vertexPosIndex[0]].x;
-            forFaceNormalVec1.y = verticesPosition[vertexPosIndex[1]].y - verticesPosition[vertexPosIndex[0]].y;
-            forFaceNormalVec1.z = verticesPosition[vertexPosIndex[1]].z - verticesPosition[vertexPosIndex[0]].z;
+            forFaceNormalVec1.x = obj.vertexPos[vertexPosIndex[1]].x - obj.vertexPos[vertexPosIndex[0]].x;
+            forFaceNormalVec1.y = obj.vertexPos[vertexPosIndex[1]].y - obj.vertexPos[vertexPosIndex[0]].y;
+            forFaceNormalVec1.z = obj.vertexPos[vertexPosIndex[1]].z - obj.vertexPos[vertexPosIndex[0]].z;
 
-            forFaceNormalVec2.x = verticesPosition[vertexPosIndex[2]].x - verticesPosition[vertexPosIndex[0]].x;
-            forFaceNormalVec2.y = verticesPosition[vertexPosIndex[2]].y - verticesPosition[vertexPosIndex[0]].y;
-            forFaceNormalVec2.z = verticesPosition[vertexPosIndex[2]].z - verticesPosition[vertexPosIndex[0]].z;
+            forFaceNormalVec2.x = obj.vertexPos[vertexPosIndex[2]].x - obj.vertexPos[vertexPosIndex[0]].x;
+            forFaceNormalVec2.y = obj.vertexPos[vertexPosIndex[2]].y - obj.vertexPos[vertexPosIndex[0]].y;
+            forFaceNormalVec2.z = obj.vertexPos[vertexPosIndex[2]].z - obj.vertexPos[vertexPosIndex[0]].z;
             
             glm::vec3 faceNormal = glm::cross(forFaceNormalVec1, forFaceNormalVec2);
             faceNormal /= glm::length(faceNormal); // 중요!
@@ -875,17 +870,17 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
             for (int i = 0; i < 3; ++i)
             {
                 // vertex position indexing
-                vertexPosIndices.push_back(vertexPosIndex[i]);
+                obj.vertexPosIndices.push_back(vertexPosIndex[i]);
 
                 // ---> vertex : vertex normal vector 1:1 대응을 위한 공통 부분 
-                vertexPerAvgNormal[vertexPosIndex[i]].x += faceNormal.x;
-                vertexPerAvgNormal[vertexPosIndex[i]].y += faceNormal.y;
-                vertexPerAvgNormal[vertexPosIndex[i]].z += faceNormal.z;
+                obj.normal[vertexPosIndex[i]].x += faceNormal.x;
+                obj.normal[vertexPosIndex[i]].y += faceNormal.y;
+                obj.normal[vertexPosIndex[i]].z += faceNormal.z;
 
                 // 점 세개에 대한 color
-                diffuseColors[vertexPosIndex[i]] = mtlData[materialPointer].Kd;
-                ambientColors[vertexPosIndex[i]] = mtlData[materialPointer].Ka;
-                specularColors[vertexPosIndex[i]] = mtlData[materialPointer].Ks;
+                obj.diffuse[vertexPosIndex[i]] = mtlData[materialPointer].Kd;
+                obj.ambient[vertexPosIndex[i]] = mtlData[materialPointer].Ka;
+                obj.specular[vertexPosIndex[i]] = mtlData[materialPointer].Ks;
 
                 // 호출되는 점에 대해 면의 개수 증가 (평균 작업 위해)
                 ++vertexPerFace[vertexPosIndex[i]];
@@ -952,8 +947,8 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     }
     */
 
-    // 3D Unsharp Masking을 위한 텍스쳐
-    int vertexPosNum = verticesPosition.size();
+    // 3D Unsharp Masking을 위한 텍스처
+    int vertexPosNum = obj.vertexPos.size();
     //neighborNum.assign(verticesNum, 0);
     int neighborSize;
     int tempNeighborIdx = 0;
@@ -963,10 +958,6 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
     {
         neighborSize = adjNeighborList[i].size();
         neighborNum[i] = neighborSize;
-        if (i == 1)
-            accumNeighborNum[i] = neighborNum[i-1];
-
-        accumNeighborNum[i] = accumNeighborNum[i-1] + neighborNum[i-1];
 
         for (int j = 0; j < neighborSize; ++j)
         {
@@ -975,23 +966,32 @@ bool loadObjMtl(const char* objName, const char* mtlName, int &faceNum)
         }
 
         // normal 평균 내주기
-        vertexPerAvgNormal[i].x /= vertexPerFace[i];
-        vertexPerAvgNormal[i].y /= vertexPerFace[i];
-        vertexPerAvgNormal[i].z /= vertexPerFace[i];
+        obj.normal[i].x /= vertexPerFace[i];
+        obj.normal[i].y /= vertexPerFace[i];
+        obj.normal[i].z /= vertexPerFace[i];
 
         // 사이즈 1 정규화
-        float normalSize = sqrt(pow(vertexPerAvgNormal[i].x, 2) + pow(vertexPerAvgNormal[i].y, 2) + pow(vertexPerAvgNormal[i].z, 2));
-        vertexPerAvgNormal[i].x /= normalSize;
-        vertexPerAvgNormal[i].y /= normalSize;
-        vertexPerAvgNormal[i].z /= normalSize;
+        float normalSize = sqrt(pow(obj.normal[i].x, 2) + pow(obj.normal[i].y, 2) + pow(obj.normal[i].z, 2));
+        obj.normal[i].x /= normalSize;
+        obj.normal[i].y /= normalSize;
+        obj.normal[i].z /= normalSize;
 
         // texture 저장
-        vertexNormalTex[tempNormalIdx] = vertexPerAvgNormal[i].x;
+        vertexNormalTex[tempNormalIdx] = obj.normal[i].x;
         ++tempNormalIdx;
-        vertexNormalTex[tempNormalIdx] = vertexPerAvgNormal[i].y;
+        vertexNormalTex[tempNormalIdx] = obj.normal[i].y;
         ++tempNormalIdx;
-        vertexNormalTex[tempNormalIdx] = vertexPerAvgNormal[i].z;
+        vertexNormalTex[tempNormalIdx] = obj.normal[i].z;
         ++tempNormalIdx;
+
+        if (i == 0)
+            continue;
+
+        if (i == 1)
+            accumNeighborNum[i] = neighborNum[i - 1];
+
+        else
+            accumNeighborNum[i] = accumNeighborNum[i - 1] + neighborNum[i - 1];
     }
 
     fclose(fp);

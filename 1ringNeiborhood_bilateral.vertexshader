@@ -1,10 +1,9 @@
 #version 330 core
 layout(location = 0) in vec3 vertexPosition_modelspace;
 layout(location = 1) in vec4 vertexColor_diffuse;
-layout(location = 2) in vec3 vertexNormal_modelspace;
-layout(location = 3) in vec3 vertexColor_ambient;
-layout(location = 4) in vec3 vertexColor_specular;
-layout(location = 5) in vec3 textureCoord;
+layout(location = 2) in vec3 vertexColor_ambient;
+layout(location = 3) in vec3 vertexColor_specular;
+layout(location = 4) in vec3 vertexNormal_modelspace;
 
 out vec3 Position_worldspace;
 out vec3 EyeDirection_cameraspace;
@@ -28,7 +27,7 @@ uniform sampler2D vertexPosTex;
 
 uniform float TEXTURESIZE_FLOAT = 1024.0;
 uniform float twoPi = 6.283185;
-uniform float SIGMA = 0.8;
+uniform float SIGMA = 1.2;
 
 void main()
 {

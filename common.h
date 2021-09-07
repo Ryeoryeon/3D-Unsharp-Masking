@@ -42,3 +42,17 @@ class MaterialData
 
         MaterialData() {};
 };
+
+class Object
+{
+    public:
+        // vertex
+        std::vector<unsigned int> vertexPosIndices;
+        std::vector<point3> vertexPos;
+        std::vector<point3> normal;
+        std::vector<point3> textureCoord;
+        // color
+        std::vector<point3> specular;
+        std::vector<point3> ambient;
+        std::vector<point4> diffuse;
+};
