@@ -55,4 +55,10 @@ class Object
         std::vector<point3> specular;
         std::vector<point3> ambient;
         std::vector<point4> diffuse;
+        // texture
+        GLint neighborNum[1024 * 1024] = { 0, }; // 각 점에 대한 이웃의 개수를 저장하는 텍스처
+        GLint neighborIdxList[1024 * 1024] = { 0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스처
+        GLfloat vertexNormalTex[1024 * 1024] = { 0, }; // 각 점의 평균 normal 저장 (텍스처 접근용)
+        GLint accumNeighborNum[1024 * 1024] = { 0, }; // 누적된 이웃의 개수
+        GLfloat vertexPosTex[1024 * 1024] = { 0, }; // 이웃의 위치에 접근하기 위한 위치 저장 텍스처
 };

@@ -20,9 +20,6 @@ const int TEXTURESIZE = 1024;
 
 std::vector<glm::vec3> lightPos = { glm::vec3(0, 5, 5) , glm::vec3(4, 4, 0), glm::vec3(3, 1, 3), glm::vec3(-2, 5, 3)};
 
-float SCALINGFACTOR = 1.8;
-//float SCALINGFACTOR = 0.63f;
-
 // timer 함수 연관
 float angle; // 회전 각도
 int lightIdx = 0; // 조명의 번호
@@ -39,6 +36,10 @@ glm::mat4 transformMatrix;
 glm::mat4 transformMatrixSecond;
 
 GLuint programID;
+// VAO
+GLuint vao1; // first Obj
+GLuint vao2; // second Obj
+
 // first Obj
 GLuint TextureCoordID;
 GLuint diffuseColorBufferID;
@@ -56,23 +57,6 @@ GLuint NormalBuffSecond;
 GLuint vertexBuffSecond; // vertex buffer Object
 GLuint elementBuffSecond; // element buffer
 
-/*
-std::vector<point3> verticesPosition;
-static std::vector<unsigned int> vertexPosIndices;
-static std::vector<point3> vertexPerAvgNormal; // normals
-static std::vector<point3> textureCoord;
-static std::vector<point3> specularColors;
-static std::vector<point3> ambientColors;
-static std::vector<point4> diffuseColors;
-*/
-
-// 3D Unsharp Masking을 위해
-static GLint neighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 각 점에 대한 이웃의 개수를 저장하는 텍스쳐
-static GLint neighborIdxList[TEXTURESIZE * TEXTURESIZE] = {0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스쳐
-static GLfloat vertexNormalTex[TEXTURESIZE * TEXTURESIZE * 3] = {0, }; // 각 점당 normal의 평균이 저장되도록 (텍스처 접근용)
-static GLint accumNeighborNum[TEXTURESIZE * TEXTURESIZE] = {0, }; // 누적된 이웃의 개수
-static GLfloat vertexPosTex[TEXTURESIZE * TEXTURESIZE * 3] = { 0, }; // 이웃의 위치에 접근하기 위한 위치 저장 텍스처
-
 GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path);
 void init();
 void transform();
@@ -80,7 +64,7 @@ void mydisplay();
 void myreshape(int width, int height);
 bool loadObjMtl(const char* objName, const char* mtlName, Object & obj);
 
-glm::mat4 boundingBox(Object & obj);
+glm::mat4 boundingBox(const Object& obj, const point3 destinationCent, const float scalingFactor);
 double getDist(point3 p1, point3 p2);
 void openglToPngSave(int outputIdx);
 
@@ -133,7 +117,7 @@ int main(int argc, char** argv)
 
 void init()
 {
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
     // .obj, .mtl 로딩 코드
 
     //const char* objName = "bunny(withMtl).obj";
@@ -146,47 +130,130 @@ void init()
     const char* objName = "utahTeapot.obj";
     const char* mtlName = "utahTeapot.mtl";
 
+    //const char* secondObjName = "utahTeapot.obj";
+    //const char* secondMtlName = "pink.mtl";
+
     const char* secondObjName = "sphere.obj";
     const char* secondMtlName = "sphere.mtl";
 
     bool res = loadObjMtl(objName, mtlName, firstObj);
-    //bool res2 = loadObjMtl(secondObjName, secondMtlName, secondObj);
+    bool res2 = loadObjMtl(secondObjName, secondMtlName, secondObj);
 
-    transformMatrix = boundingBox(firstObj);
+    transformMatrix = boundingBox(firstObj, point3(0, 0, 0), 3.0f);
+    transformMatrixSecond = boundingBox(secondObj, point3(0, 1.5f, 2.0f), 2.1f);
+    //transformMatrixSecond = boundingBox(secondObj, point3(0, 1.0f, 2.0f), 2.1f);
 
     // ***** first obj
+    // 0. VAO 초기화
+    glGenVertexArrays(1, &vao1);
+    glBindVertexArray(vao1);
+
     // 1. 리스트를 버퍼에 복사
-    // element
+    // (1) vertex position
     glGenBuffers(1, &vertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point3), &firstObj.vertexPos[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    // vertex element
+    // (2) vertex element
     glGenBuffers(1, &elementBuffer); // 버퍼 생성
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, firstObj.vertexPosIndices.size() * sizeof(unsigned int), &firstObj.vertexPosIndices[0], GL_STATIC_DRAW);
 
-    // diffuse
+    // (3) diffuse
     glGenBuffers(1, &diffuseColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBufferID);
     glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point4), &firstObj.diffuse[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBufferID);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    // ambient
+    // (4) ambient
     glGenBuffers(1, &ambientColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, ambientColorBufferID);
     glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point3), &firstObj.ambient[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(2);
+    glBindBuffer(GL_ARRAY_BUFFER, ambientColorBufferID);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    // specular
+    // (5) specular
     glGenBuffers(1, &specularColorBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
     glBufferData(GL_ARRAY_BUFFER, firstObj.vertexPos.size() * sizeof(point3), &firstObj.specular[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(3);
+    glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    // normal (face)
-    // 1:1 vertex normal은 텍스처로 전달
+    // (6) normal (vertex avg normal)
     glGenBuffers(1, &NormalBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
     glBufferData(GL_ARRAY_BUFFER, firstObj.normal.size() * sizeof(point3), &firstObj.normal[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(4);
+    glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     //
+
+    // ***** second obj
+    // 0. VAO 초기화
+    glGenVertexArrays(1, &vao2);
+    glBindVertexArray(vao2);
+
+    // (1) vertex position
+    glGenBuffers(1, &vertexBuffSecond);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffSecond);
+    glBufferData(GL_ARRAY_BUFFER, secondObj.vertexPos.size() * sizeof(point3), &secondObj.vertexPos[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffSecond);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    // (2) vertex element
+    glGenBuffers(1, &elementBuffSecond); // 버퍼 생성
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffSecond);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, secondObj.vertexPosIndices.size() * sizeof(unsigned int), &secondObj.vertexPosIndices[0], GL_STATIC_DRAW);
+
+    // (3) diffuse
+    glGenBuffers(1, &diffuseColorBuffSecond);
+    glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBuffSecond);
+    glBufferData(GL_ARRAY_BUFFER, secondObj.vertexPos.size() * sizeof(point4), &secondObj.diffuse[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBuffSecond);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    // (4) ambient
+    glGenBuffers(1, &ambientColorBuffSecond);
+    glBindBuffer(GL_ARRAY_BUFFER, ambientColorBuffSecond);
+    glBufferData(GL_ARRAY_BUFFER, secondObj.vertexPos.size() * sizeof(point3), &secondObj.ambient[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(2);
+    glBindBuffer(GL_ARRAY_BUFFER, ambientColorBuffSecond);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    // (5) specular
+    glGenBuffers(1, &specularColorBuffSecond);
+    glBindBuffer(GL_ARRAY_BUFFER, specularColorBuffSecond);
+    glBufferData(GL_ARRAY_BUFFER, secondObj.vertexPos.size() * sizeof(point3), &secondObj.specular[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(3);
+    glBindBuffer(GL_ARRAY_BUFFER, specularColorBuffSecond);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    // (6) normal (vertex avg normal)
+    glGenBuffers(1, &NormalBuffSecond);
+    glBindBuffer(GL_ARRAY_BUFFER, NormalBuffSecond);
+    glBufferData(GL_ARRAY_BUFFER, secondObj.normal.size() * sizeof(point3), &secondObj.normal[0], GL_STATIC_DRAW);
+    // pointer
+    glEnableVertexAttribArray(4);
+    glBindBuffer(GL_ARRAY_BUFFER, NormalBuffSecond);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_TRUE, 0, (void*)0);
 
     // *** 3D unsharp Masking
     // texture Coordinate
@@ -200,6 +267,7 @@ void init()
     */
 
     // Texture
+    // first Obj
     // (1) : 이웃의 개수
     GLuint neighborNumTexID;
     glGenTextures(1, &neighborNumTexID);
@@ -213,8 +281,7 @@ void init()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, neighborNum);
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, TEXTURESIZE, TEXTURESIZE, 0, GL_RED, GL_UNSIGNED_BYTE, neighborNum);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, firstObj.neighborNum);
 
     // (2) : 이웃의 인덱스
     GLuint neighborNumIdxTexID;
@@ -227,7 +294,7 @@ void init()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, neighborIdxList);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, firstObj.neighborIdxList);
 
     // (3) : vertex normal
     GLuint vertexPerNormalTexID;
@@ -240,7 +307,7 @@ void init()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, vertexNormalTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, firstObj.vertexNormalTex);
 
     // (4) : 누적된 이웃의 개수
     GLuint accumNeighborNumTexID;
@@ -253,7 +320,7 @@ void init()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, accumNeighborNum);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, firstObj.accumNeighborNum);
 
     // (5) : 이웃한 점들의 위치에 접근하기 위한 vertex position [임시]
     GLuint vertexPerPosTexID;
@@ -266,19 +333,93 @@ void init()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, vertexPosTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, firstObj.vertexPosTex);
+
+    // second Obj
+    // (1) : 이웃의 개수
+    GLuint neighborNumTexSecondID;
+    glGenTextures(1, &neighborNumTexSecondID);
+    glBindTexture(GL_TEXTURE_2D, neighborNumTexSecondID);
+
+    // set the texture wrapping parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // set texture filtering parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, secondObj.neighborNum);
+
+    // (2) : 이웃의 인덱스
+    GLuint neighborNumIdxTexSecondID;
+    glGenTextures(1, &neighborNumIdxTexSecondID);
+    glBindTexture(GL_TEXTURE_2D, neighborNumIdxTexSecondID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, secondObj.neighborIdxList);
+
+    // (3) : vertex normal
+    GLuint vertexPerNormalTexSecondID;
+    glGenTextures(1, &vertexPerNormalTexSecondID);
+    glBindTexture(GL_TEXTURE_2D, vertexPerNormalTexSecondID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, secondObj.vertexNormalTex);
+
+    // (4) : 누적된 이웃의 개수
+    GLuint accumNeighborNumTexSecondID;
+    glGenTextures(1, &accumNeighborNumTexSecondID);
+    glBindTexture(GL_TEXTURE_2D, accumNeighborNumTexSecondID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, secondObj.accumNeighborNum);
+
+    // (5) : 이웃한 점들의 위치에 접근하기 위한 vertex position [임시]
+    GLuint vertexPerPosTexSecondID;
+    glGenTextures(1, &vertexPerPosTexSecondID);
+    glBindTexture(GL_TEXTURE_2D, vertexPerPosTexSecondID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, secondObj.vertexPosTex);
 
     // 3. shader program
     programID = LoadShaders("1ringNeiborhood_bilateral.vertexshader", "1ringNeiborhood.fragmentshader");
     //programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
 
+    // first Obj
     GLuint texLocation = glGetUniformLocation(programID, "neighborNum");
     GLuint tex2Location = glGetUniformLocation(programID, "neighborIdxList");
     GLuint tex3Location = glGetUniformLocation(programID, "vertexNormalTex");
     GLuint tex4Location = glGetUniformLocation(programID, "accumNeighborNum");
     GLuint tex5Location = glGetUniformLocation(programID, "vertexPosTex"); // 이웃한 점 위치 접근을 위해
+    // second Obj
+    GLuint tex6Location = glGetUniformLocation(programID, "neighborNumSecond");
+    GLuint tex7Location = glGetUniformLocation(programID, "neighborIdxListSecond");
+    GLuint tex8Location = glGetUniformLocation(programID, "vertexNormalTexSecond");
+    GLuint tex9Location = glGetUniformLocation(programID, "accumNeighborNumSecond");
+    GLuint tex10Location = glGetUniformLocation(programID, "vertexPosTexSecond"); // 이웃한 점 위치 접근을 위해
 
-    // 코드는 죄가 없다
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_CULL_FACE);
@@ -286,6 +427,7 @@ void init()
 
     glUseProgram(programID);
 
+    // first Obj
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, neighborNumTexID);
     glUniform1i(texLocation, 0);
@@ -305,6 +447,27 @@ void init()
     glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, vertexPerPosTexID);
     glUniform1i(tex5Location, 4);
+
+    // second Obj
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, neighborNumTexSecondID);
+    glUniform1i(tex6Location, 5);
+
+    glActiveTexture(GL_TEXTURE6);
+    glBindTexture(GL_TEXTURE_2D, neighborNumIdxTexSecondID);
+    glUniform1i(tex7Location, 6);
+
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_2D, vertexPerNormalTexSecondID);
+    glUniform1i(tex8Location, 7);
+
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D, accumNeighborNumTexSecondID);
+    glUniform1i(tex9Location, 8);
+
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D, vertexPerPosTexSecondID);
+    glUniform1i(tex10Location, 9);
 }
 
 void mydisplay()
@@ -312,35 +475,17 @@ void mydisplay()
     transform();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // ***** first obj
-    // 2. 포인터 지정
-    // vertex
-    glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    // diffuse
-    glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, diffuseColorBufferID);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    // ambient
-    glEnableVertexAttribArray(2);
-    glBindBuffer(GL_ARRAY_BUFFER, ambientColorBufferID);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    // specular
-    glEnableVertexAttribArray(3);
-    glBindBuffer(GL_ARRAY_BUFFER, specularColorBufferID);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    // normal
-    glEnableVertexAttribArray(4);
-    glBindBuffer(GL_ARRAY_BUFFER, NormalBufferID);
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_TRUE, 0, (void*)0);
-    /*
-    // texture Coordinate
+    // (1) 현재 몇 번째 Obj를 렌더링 하고 있는지 받아오기 위해
+    GLuint objNumberID = glGetUniformLocation(programID, "objNumber");
+    GLuint currentObj;
+    currentObj = vao1;
+    glUniform1i(objNumberID, currentObj);
 
-    glEnableVertexAttribArray(5);
-    glBindBuffer(GL_ARRAY_BUFFER, TextureCoordID);
-    glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    */
+    // (2) Obj마다 다른 변환 행렬을 적용하기 위해
+    GLuint TransformedMatrixID = glGetUniformLocation(programID, "Transform");
+    glUniformMatrix4fv(TransformedMatrixID, 1, GL_FALSE, &transformMatrix[0][0]);
+
+    glBindVertexArray(vao1);
     glDrawElements(
         GL_TRIANGLES,
         firstObj.vertexPosIndices.size(), // count
@@ -348,17 +493,20 @@ void mydisplay()
         (void*)0 // offset
     );
 
-    //glDrawArrays(GL_TRIANGLES, 0, tripleFace);
-    glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(1);
-    glDisableVertexAttribArray(2);
-    glDisableVertexAttribArray(3);
-    glDisableVertexAttribArray(4);
-    //glDisableVertexAttribArray(5);
+    currentObj = vao2;
+    glUniform1i(objNumberID, currentObj);
+    glUniformMatrix4fv(TransformedMatrixID, 1, GL_FALSE, &transformMatrixSecond[0][0]);
 
-    //glFlush();
+    glBindVertexArray(vao2);
+    glDrawElements(
+        GL_TRIANGLES,
+        secondObj.vertexPosIndices.size(), // count
+        GL_UNSIGNED_INT,
+        (void*)0 // offset
+    );
+
+    glBindVertexArray(0); // unbind
     glutSwapBuffers();
-
 }
 
 void myreshape(int width, int height)
@@ -375,8 +523,6 @@ void myreshape(int width, int height)
     );
 
     transform();
-    //
-
 }
 
 void transform()
@@ -393,8 +539,10 @@ void transform()
     glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &Model[0][0]);
 
     // 변환 행렬
+    /*
     GLuint TransformedMatrixID = glGetUniformLocation(programID, "Transform");
     glUniformMatrix4fv(TransformedMatrixID, 1, GL_FALSE, &transformMatrix[0][0]);
+    */
 
     GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
     glUniform3f(LightID, lightPos[lightIdx].x, lightPos[lightIdx].y, lightPos[lightIdx].z);
@@ -497,7 +645,7 @@ GLuint LoadShaders(const char* vertex_file_path, const char* fragment_file_path)
     return ProgramID;
 }
 
-glm::mat4 boundingBox(Object & obj)
+glm::mat4 boundingBox(const Object & obj, const point3 destinationCent, const float scalingFactor)
 {
     point3 boxCent;
 
@@ -555,9 +703,10 @@ glm::mat4 boundingBox(Object & obj)
     // maxCoordX를 기준으로 잡을 시, 절대 minCoordX와는 최대거리가 성립하지 않는다
     float boundingDist = getDist(point3(maxCoordX, maxCoordY, maxCoordZ), boxCent);
 
-    float scalingSize = SCALINGFACTOR / boundingDist;
+    float scalingSize = scalingFactor / boundingDist;
     glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scalingSize, scalingSize, scalingSize));
-    glm::mat4 translateMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-boxCent.x, -boxCent.y, -boxCent.z));
+    glm::mat4 translateMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-boxCent.x + destinationCent.x, -boxCent.y + + destinationCent.y, -boxCent.z + destinationCent.z));
+    //glm::mat4 translateMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(-boxCent.x, -boxCent.y, -boxCent.z));
     glm::mat4 transformMatrix= scalingMatrix * translateMatrix;
 
     // 행렬과 좌표 곱 계산은 GPU에서
@@ -957,11 +1106,11 @@ bool loadObjMtl(const char* objName, const char* mtlName, Object & obj)
     for (int i = 0; i < vertexPosNum; ++i)
     {
         neighborSize = adjNeighborList[i].size();
-        neighborNum[i] = neighborSize;
+        obj.neighborNum[i] = neighborSize;
 
         for (int j = 0; j < neighborSize; ++j)
         {
-            neighborIdxList[tempNeighborIdx] = adjNeighborList[i][j];
+            obj.neighborIdxList[tempNeighborIdx] = adjNeighborList[i][j];
             ++tempNeighborIdx;
         }
 
@@ -977,21 +1126,21 @@ bool loadObjMtl(const char* objName, const char* mtlName, Object & obj)
         obj.normal[i].z /= normalSize;
 
         // texture 저장
-        vertexNormalTex[tempNormalIdx] = obj.normal[i].x;
+        obj.vertexNormalTex[tempNormalIdx] = obj.normal[i].x;
         ++tempNormalIdx;
-        vertexNormalTex[tempNormalIdx] = obj.normal[i].y;
+        obj.vertexNormalTex[tempNormalIdx] = obj.normal[i].y;
         ++tempNormalIdx;
-        vertexNormalTex[tempNormalIdx] = obj.normal[i].z;
+        obj.vertexNormalTex[tempNormalIdx] = obj.normal[i].z;
         ++tempNormalIdx;
 
         if (i == 0)
             continue;
 
         if (i == 1)
-            accumNeighborNum[i] = neighborNum[i - 1];
+            obj.accumNeighborNum[i] = obj.neighborNum[i - 1];
 
         else
-            accumNeighborNum[i] = accumNeighborNum[i - 1] + neighborNum[i - 1];
+            obj.accumNeighborNum[i] = obj.accumNeighborNum[i - 1] + obj.neighborNum[i - 1];
     }
 
     fclose(fp);
@@ -1045,7 +1194,6 @@ void openglToPngSave(int outputIdx)
     //sprintf(filename, "%c_output_%d_%d.bmp", RENDERMODE, idx, lightIdx);
     sprintf(filename, "output[%i]_%d.png", lightIdx, fileNo++);
     imwrite(filename, outputImage);
-
 
     delete[] bits;
 }
