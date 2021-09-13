@@ -121,27 +121,30 @@ void init()
     // .obj, .mtl 로딩 코드
 
     //const char* objName = "bunny(withMtl).obj";
-    //const char* objName = "bunny(moreFace_withMtl).obj";
-    //const char* mtlName = "bunny.mtl";
+    const char* objName = "bunny(moreFace_withMtl).obj";
+    const char* mtlName = "bunny.mtl";
 
     //const char* objName = "armadillo.obj";
     //const char* mtlName = "armadillo.mtl";
 
-    const char* objName = "utahTeapot.obj";
-    const char* mtlName = "utahTeapot.mtl";
+    //const char* objName = "utahTeapot.obj";
+    //const char* mtlName = "utahTeapot.mtl";
 
     //const char* secondObjName = "utahTeapot.obj";
     //const char* secondMtlName = "pink.mtl";
 
-    const char* secondObjName = "sphere.obj";
-    const char* secondMtlName = "sphere.mtl";
+    const char* secondObjName = "bunny(withMtl).obj";
+    const char* secondMtlName = "blue.mtl";
+
+    //const char* secondObjName = "sphere.obj";
+    //const char* secondMtlName = "sphere.mtl";
 
     bool res = loadObjMtl(objName, mtlName, firstObj);
     bool res2 = loadObjMtl(secondObjName, secondMtlName, secondObj);
 
     transformMatrix = boundingBox(firstObj, point3(0, 0, 0), 3.0f);
-    transformMatrixSecond = boundingBox(secondObj, point3(0, 1.5f, 2.0f), 2.1f);
-    //transformMatrixSecond = boundingBox(secondObj, point3(0, 1.0f, 2.0f), 2.1f);
+    transformMatrixSecond = boundingBox(secondObj, point3(0, 0.5f, 1.0f), 2.0f); // 토끼
+    //transformMatrixSecond = boundingBox(secondObj, point3(0, 1.5f, 2.0f), 2.1f); // (주전자/구)
 
     // ***** first obj
     // 0. VAO 초기화

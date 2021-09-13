@@ -34,7 +34,7 @@ uniform sampler2D vertexPosTexSecond;
 
 uniform float TEXTURESIZE_FLOAT = 1024.0;
 uniform float twoPi = 6.283185;
-uniform float SIGMA = 0.8;
+uniform float SIGMA = 1.5;
 
 void main()
 {
@@ -81,7 +81,9 @@ void main()
 
     vec3 currentColor = ModifiedAmbientColor + diffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + specularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
 
-    float currentIntensity = (currentColor.x + currentColor.y + currentColor.z) / 3.0f;
+    float currentIntensity = sqrt(pow(currentColor.x, 2) + pow(currentColor.y, 2) + pow(currentColor.z, 2));
+    //float currentIntensity = (currentColor.x + currentColor.y + currentColor.z) / 3.0f;
+
     // 시그마 1 가우시안 계수
     float GAUSSIAN = 1.0/sqrt(twoPi * SIGMA * SIGMA);   
     // 계수 누적
@@ -143,20 +145,21 @@ void main()
 
         // *** 이웃들의 illumination color 계산
         vec3 neighborNormal_cameraspace = ( V * M * vec4(neighborNormal,0)).xyz;
-        vec3 n = normalize(neighborNormal_cameraspace);
-        vec3 R = reflect (-l, n);
+        vec3 n_neighbor = normalize(neighborNormal_cameraspace);
+        vec3 R = reflect (-l, n_neighbor);
         float cosAlpha = clamp( dot( E,R ), 0,1 );
-        float cosTheta = clamp( dot( n,l), 0,1 );
+        float cosTheta = clamp( dot( n_neighbor,l), 0,1 );
 
         vec3 neighborColor = ModifiedAmbientColor + diffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + specularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
 
-        float neighborIntensity = (neighborColor.x + neighborColor.y + neighborColor.z) / 3.0f;
+        float neighborIntensity = sqrt(pow(neighborColor.x, 2) + pow(neighborColor.y, 2) + pow(neighborColor.z, 2));
+        //float neighborIntensity = (neighborColor.x + neighborColor.y + neighborColor.z) / 3.0f;
 
         // *** bilateral filtering
 
         // 밝기의 차
         float intensitySub = currentIntensity - neighborIntensity;
-        float intensityGaussian = GAUSSIAN * exp(-((intensitySub * intensitySub)/(2.0f * SIGMA * SIGMA)));
+        float intensityGaussian = GAUSSIAN * exp(-(pow(intensitySub, 2))/(2.0f * SIGMA * SIGMA));
 
         // 거리의 차
         vec3 positionSub = vertexPosition_cameraspace - neighborPos_cameraspace;
@@ -164,8 +167,20 @@ void main()
         positionGaussian *= GAUSSIAN * exp(-((positionSub.y * positionSub.y)/(2.0f * SIGMA * SIGMA)));
         positionGaussian *= GAUSSIAN * exp(-((positionSub.z * positionSub.z)/(2.0f * SIGMA * SIGMA)));
 
-        avgIntensity += intensityGaussian * positionGaussian * neighborColor;
-        accumCoefficient += intensityGaussian * positionGaussian;
+        // 노말의 차
+        vec3 normalSub = neighborNormal_cameraspace - currentNormal_cameraspace; // (normalize 이전)
+        // vec3 normalSub = n_neighbor - n; // (normalize 이후)
+        float normalGaussian = GAUSSIAN * exp(-((normalSub.x * normalSub.x)/(2.0f * SIGMA * SIGMA)));
+        normalGaussian *= GAUSSIAN * exp(-((normalSub.y * normalSub.y)/(2.0f * SIGMA * SIGMA)));
+        normalGaussian *= GAUSSIAN * exp(-((normalSub.z * normalSub.z)/(2.0f * SIGMA * SIGMA)));
+
+        // normal 적용 O
+        avgIntensity += intensityGaussian * positionGaussian * normalGaussian * neighborColor;
+        accumCoefficient += intensityGaussian * positionGaussian * normalGaussian;
+
+        // normal 적용 X
+        //avgIntensity += intensityGaussian * positionGaussian * neighborColor;
+        //accumCoefficient += intensityGaussian * positionGaussian;
     }
 
     float neighborNum_float = float(currentNeighborNum);
