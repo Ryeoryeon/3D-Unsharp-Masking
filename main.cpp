@@ -121,23 +121,23 @@ void init()
     // .obj, .mtl 로딩 코드
 
     //const char* objName = "bunny(withMtl).obj";
-    const char* objName = "bunny(moreFace_withMtl).obj";
-    const char* mtlName = "bunny.mtl";
+    //const char* objName = "bunny(moreFace_withMtl).obj";
+    //const char* mtlName = "bunny.mtl";
 
     //const char* objName = "armadillo.obj";
     //const char* mtlName = "armadillo.mtl";
 
-    //const char* objName = "utahTeapot.obj";
-    //const char* mtlName = "utahTeapot.mtl";
+    const char* objName = "utahTeapot.obj";
+    const char* mtlName = "utahTeapot.mtl";
 
     //const char* secondObjName = "utahTeapot.obj";
     //const char* secondMtlName = "pink.mtl";
 
-    const char* secondObjName = "bunny(withMtl).obj";
-    const char* secondMtlName = "blue.mtl";
+    //const char* secondObjName = "bunny(withMtl).obj";
+    //const char* secondMtlName = "blue.mtl";
 
-    //const char* secondObjName = "sphere.obj";
-    //const char* secondMtlName = "sphere.mtl";
+    const char* secondObjName = "sphere.obj";
+    const char* secondMtlName = "sphere.mtl";
 
     bool res = loadObjMtl(objName, mtlName, firstObj);
     bool res2 = loadObjMtl(secondObjName, secondMtlName, secondObj);
@@ -407,7 +407,7 @@ void init()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, secondObj.vertexPosTex);
 
     // 3. shader program
-    programID = LoadShaders("1ringNeiborhood_bilateral.vertexshader", "1ringNeiborhood.fragmentshader");
+    programID = LoadShaders("1ringNeiborhood_bilateral2.vertexshader", "1ringNeiborhood.fragmentshader");
     //programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
 
     // first Obj
