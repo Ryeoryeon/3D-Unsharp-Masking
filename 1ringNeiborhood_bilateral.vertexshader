@@ -18,23 +18,12 @@ uniform mat4 V;
 uniform mat4 M;
 uniform mat4 Transform;
 uniform vec3 LightPosition_worldspace;
-uniform int objNumber;
 
 uniform isampler2D neighborNum;
 uniform isampler2D neighborIdxList;
-uniform sampler2D vertexNormalTex;
 uniform isampler2D accumNeighborNum;
-uniform sampler2D vertexPosTex;
-
-uniform isampler2D neighborNumSecond;
-uniform isampler2D neighborIdxListSecond;
-uniform sampler2D vertexNormalTexSecond;
-uniform isampler2D accumNeighborNumSecond;
-uniform sampler2D vertexPosTexSecond;
 
 uniform float TEXTURESIZE_FLOAT = 1024.0;
-uniform float twoPi = 6.283185;
-uniform float SIGMA = 1.5;
 
 void main()
 {
@@ -48,7 +37,7 @@ void main()
     vec3 vertexPosition_cameraspace = ( V * M * vec4(vertexPosition_modelspace,1)).xyz;
     EyeDirection_cameraspace = vec3(0,0,0) - vertexPosition_cameraspace;
 
-    vec3 LightPosition_cameraspace = (V * vec4(LightPosition_worldspace, 1)).xyz;
+    vec3 LightPosition_cameraspace = ( V * vec4(LightPosition_worldspace, 1)).xyz;
     LightDirection_cameraspace = LightPosition_cameraspace + EyeDirection_cameraspace;
 
     vertexNormal_cameraspace = ( V * M * vec4(vertexNormal_modelspace,0)).xyz;
@@ -61,7 +50,7 @@ void main()
 
     // illumination color 계산을 위한 변수들
     vec3 avgIntensity = vec3(0, 0, 0);
-    vec3 LightColor = vec3(1,1,1);
+    vec3 LightColor = vec3(1, 1, 1);
     float LightPower = 30.0f;
 
     vec3 l = normalize(LightDirection_cameraspace);
@@ -69,10 +58,6 @@ void main()
     float distance = length( LightPosition_worldspace - Position_worldspace );
 
     // *** 현재 vertex의 illumination color 계산
-
-    //vec3 currentNormal = texture(vertexNormalTex, vec2(colIdx, rowIdx)).rgb;
-    //currentNormal_cameraspace = ( V * M * vec4(currentNormal, 0)).xyz;
-
     vec3 currentNormal_cameraspace = ( V * M * vec4(vertexNormal_modelspace, 0)).xyz;
     vec3 n = normalize(currentNormal_cameraspace);
     vec3 R = reflect (-l, n);
@@ -82,110 +67,58 @@ void main()
     vec3 currentColor = ModifiedAmbientColor + diffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + specularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
 
     float currentIntensity = sqrt(pow(currentColor.x, 2) + pow(currentColor.y, 2) + pow(currentColor.z, 2));
-    //float currentIntensity = (currentColor.x + currentColor.y + currentColor.z) / 3.0f;
 
-    // 시그마 1 가우시안 계수
-    float GAUSSIAN = 1.0/sqrt(twoPi * SIGMA * SIGMA);   
+    int currentNeighborNum = texture(neighborNum, vec2(colIdx, rowIdx)).r;
+    int startVertexIdx = texture(accumNeighborNum, vec2(colIdx, rowIdx)).r;
+    int endVertexIdx = startVertexIdx + currentNeighborNum;
+
     // 계수 누적
     float accumCoefficient = 0;
 
-    int currentNeighborNum;
-    int startVertexIdx;
-    int endVertexIdx;
-
-    if(objNumber == 1)
-    {
-        currentNeighborNum = texture(neighborNum, vec2(colIdx, rowIdx)).r;
-        startVertexIdx = texture(accumNeighborNum, vec2(colIdx, rowIdx)).r;
-        endVertexIdx = startVertexIdx + currentNeighborNum;
-    }
-
-    if(objNumber == 2)
-    {
-        currentNeighborNum = texture(neighborNumSecond, vec2(colIdx, rowIdx)).r;
-        startVertexIdx = texture(accumNeighborNumSecond, vec2(colIdx, rowIdx)).r;
-        endVertexIdx = startVertexIdx + currentNeighborNum;
-    }
-
     for (int i = startVertexIdx; i < endVertexIdx; i++)
     {
-        unsharpVector = vec3(1, 1, 1);
         // 현재 vertex의 이웃에 순차적으로 접근
         float i_float = float(i);
         float neighborColIdx = i_float/TEXTURESIZE_FLOAT;
         float neighborQuotient = floor(neighborColIdx);
         float neighborRowIdx = neighborQuotient/TEXTURESIZE_FLOAT;
+        int currentNeighborIdx = texture(neighborIdxList, vec2(neighborColIdx, neighborRowIdx)).r;
 
         // 이웃의 정보 가져오기
-        vec3 neighborNormal;
-        vec3 neighborPos;
-
-        if(objNumber == 1)
-        {
-            float currentNeighborIdx = texture(neighborIdxList, vec2(neighborColIdx, neighborRowIdx)).r;
-            float neighborInforColIdx = currentNeighborIdx/TEXTURESIZE_FLOAT;
-            float neighborInforQuotient = floor(neighborInforColIdx);
-            float neighborInforRowIdx = neighborInforQuotient/TEXTURESIZE_FLOAT;
-            neighborInforColIdx -= neighborInforQuotient;
-            neighborNormal = texture(vertexNormalTex, vec2(neighborInforColIdx, neighborInforRowIdx)).rgb;
-            neighborPos = texture(vertexPosTex, vec2(neighborInforColIdx, neighborInforRowIdx)).rgb;
-        }
-
-        if(objNumber == 2)
-        {
-            float currentNeighborIdx = texture(neighborIdxListSecond, vec2(neighborColIdx, neighborRowIdx)).r;
-            float neighborInforColIdx = currentNeighborIdx/TEXTURESIZE_FLOAT;
-            float neighborInforQuotient = floor(neighborInforColIdx);
-            float neighborInforRowIdx = neighborInforQuotient/TEXTURESIZE_FLOAT;
-            neighborInforColIdx -= neighborInforQuotient;
-            neighborNormal = texture(vertexNormalTexSecond, vec2(neighborInforColIdx, neighborInforRowIdx)).rgb;
-            neighborPos = texture(vertexPosTexSecond, vec2(neighborInforColIdx, neighborInforRowIdx)).rgb;
-        }
+        vec3 neighborNormal = vec3(vertexNormal_modelspace[currentNeighborIdx]);
+        vec3 neighborPos = vec3(vertexPosition_modelspace[currentNeighborIdx]);
         vec3 neighborPos_cameraspace = ( V * M * vec4(neighborPos,1)).xyz;
 
         // *** 이웃들의 illumination color 계산
-        vec3 neighborNormal_cameraspace = ( V * M * vec4(neighborNormal,0)).xyz;
+        vec3 neighborNormal_cameraspace = ( V * M * vec4(neighborNormal, 0)).xyz;
         vec3 n_neighbor = normalize(neighborNormal_cameraspace);
         vec3 R = reflect (-l, n_neighbor);
-        float cosAlpha = clamp( dot( E,R ), 0,1 );
-        float cosTheta = clamp( dot( n_neighbor,l), 0,1 );
+        float cosAlpha = clamp( dot( E, R ), 0,1 );
+        float cosTheta = clamp( dot( n_neighbor, l), 0,1 );
+        float distanceNeighbor = length( LightPosition_worldspace - neighborPos );
 
-        vec3 neighborColor = ModifiedAmbientColor + diffuseColor * LightColor * LightPower * cosTheta / (distance*distance) + specularColor * LightColor * LightPower * pow(cosAlpha,5) / (distance*distance);
+        vec3 neighborColor = ModifiedAmbientColor + diffuseColor * LightColor * LightPower * cosTheta / (distanceNeighbor*distanceNeighbor) + specularColor * LightColor * LightPower * pow(cosAlpha,5) / (distanceNeighbor*distanceNeighbor);
 
         float neighborIntensity = sqrt(pow(neighborColor.x, 2) + pow(neighborColor.y, 2) + pow(neighborColor.z, 2));
-        //float neighborIntensity = (neighborColor.x + neighborColor.y + neighborColor.z) / 3.0f;
 
         // *** bilateral filtering
-
-        // 밝기의 차
+        // 밝기의 차 (미사용)
         float intensitySub = currentIntensity - neighborIntensity;
-        float intensityGaussian = GAUSSIAN * exp(-(pow(intensitySub, 2))/(2.0f * SIGMA * SIGMA));
 
-        // 거리의 차
+        // 거리의 차 (미사용)
         vec3 positionSub = vertexPosition_cameraspace - neighborPos_cameraspace;
-        float positionGaussian = GAUSSIAN * exp(-((positionSub.x * positionSub.x)/(2.0f * SIGMA * SIGMA)));
-        positionGaussian *= GAUSSIAN * exp(-((positionSub.y * positionSub.y)/(2.0f * SIGMA * SIGMA)));
-        positionGaussian *= GAUSSIAN * exp(-((positionSub.z * positionSub.z)/(2.0f * SIGMA * SIGMA)));
 
-        // 노말의 차
-        vec3 normalSub = neighborNormal_cameraspace - currentNormal_cameraspace; // (normalize 이전)
-        // vec3 normalSub = n_neighbor - n; // (normalize 이후)
-        float normalGaussian = GAUSSIAN * exp(-((normalSub.x * normalSub.x)/(2.0f * SIGMA * SIGMA)));
-        normalGaussian *= GAUSSIAN * exp(-((normalSub.y * normalSub.y)/(2.0f * SIGMA * SIGMA)));
-        normalGaussian *= GAUSSIAN * exp(-((normalSub.z * normalSub.z)/(2.0f * SIGMA * SIGMA)));
+        // normal의 내적 결과에 따른 가중치 설정
+        float normalWeight = dot(n_neighbor, n); // (normalize 이후)
+        normalWeight = clamp(normalWeight, 0.2, 1);
 
-        // normal 적용 O
-        avgIntensity += intensityGaussian * positionGaussian * normalGaussian * neighborColor;
-        accumCoefficient += intensityGaussian * positionGaussian * normalGaussian;
-
-        // normal 적용 X
-        //avgIntensity += intensityGaussian * positionGaussian * neighborColor;
-        //accumCoefficient += intensityGaussian * positionGaussian;
+        avgIntensity += normalWeight * neighborColor;
+        accumCoefficient += normalWeight;
     }
 
+    //avgIntensity /= accumCoefficient;
     float neighborNum_float = float(currentNeighborNum);
-    avgIntensity /= accumCoefficient;
-    //avgIntensity /= neighborNum_float;
+    avgIntensity /= neighborNum_float;
 
     // *** 평균과의 차 구하고, 내보내기
     unsharpVector = currentColor - avgIntensity;
