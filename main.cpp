@@ -26,7 +26,9 @@ int lightIdx = 0; // 조명의 번호
 
 Object firstObj;
 Object secondObj;
-std::vector<int> activateObj = { 1, 1 }; // obj 활성화 변수
+Object thirdObj;
+
+std::vector<int> activateObj = { 1, 1, 1 }; // obj 활성화 변수
 
 glm::mat4 Projection;
 glm::mat4 View;
@@ -35,6 +37,7 @@ glm::mat4 mvp;
 
 glm::mat4 transformMatrix;
 glm::mat4 transformMatrixSecond;
+glm::mat4 transformMatrixThird;
 
 GLuint programID;
 
@@ -107,17 +110,14 @@ void init()
     const char* objName = "utahTeapot.obj";
     const char* mtlName = "utahTeapot.mtl";
 
-    //const char* secondObjName = "utahTeapot.obj";
-    //const char* secondMtlName = "pink.mtl";
-
-    //const char* secondObjName = "bunny(withMtl).obj";
-    //const char* secondMtlName = "blue.mtl";
-
     const char* secondObjName = "sphere.obj";
     const char* secondMtlName = "sphere.mtl";
 
+    const char* thirdObjName = "bunny(withMtl).obj";
+    const char* thirdMtlName = "pink.mtl";
+    //const char* thirdMtlName = "blue.mtl";
+
     programID = LoadShaders("1ringNeiborhood_bilateral.vertexshader", "1ringNeiborhood.fragmentshader");
-    //programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -136,9 +136,15 @@ void init()
     if (activateObj[1])
     {
         secondObj.loadObjMtl(secondObjName, secondMtlName);
-        transformMatrixSecond = secondObj.boundingBox(point3(0, 0.5f, 1.0f), 2.0f); // 토끼 최적
-        //transformMatrixSecond = secondObj.boundingBox(point3(0, 1.5f, 2.0f), 2.1f); // 주전자/구 최적
+        transformMatrixSecond = secondObj.boundingBox(point3(0, 1.2f, 2.0f), 2.1f); // 주전자/구 최적
         secondObj.initResource(programID);
+    }
+
+    if (activateObj[2])
+    {
+        thirdObj.loadObjMtl(thirdObjName, thirdMtlName);
+        transformMatrixThird = thirdObj.boundingBox(point3(-1.0f, 0.3f, 1.0f), 1.6f); // 토끼 최적
+        thirdObj.initResource(programID);
     }
 }
 
@@ -155,6 +161,9 @@ void mydisplay()
 
     secondObj.draw(transformID, transformMatrixSecond, TEXTURESIZE);
     secondObj.disable();
+
+    thirdObj.draw(transformID, transformMatrixThird, TEXTURESIZE);
+    thirdObj.disable();
 
     glutSwapBuffers();
 }

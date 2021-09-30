@@ -102,23 +102,22 @@ void main()
         float neighborIntensity = sqrt(pow(neighborColor.x, 2) + pow(neighborColor.y, 2) + pow(neighborColor.z, 2));
 
         // *** bilateral filtering
-        // 밝기의 차 (미사용)
-        float intensitySub = currentIntensity - neighborIntensity;
-
-        // 거리의 차 (미사용)
-        vec3 positionSub = vertexPosition_cameraspace - neighborPos_cameraspace;
 
         // normal의 내적 결과에 따른 가중치 설정
         float normalWeight = dot(n_neighbor, n); // (normalize 이후)
-        normalWeight = clamp(normalWeight, 0.2, 1);
+        normalWeight = clamp(normalWeight, 0, 1);
 
         avgIntensity += normalWeight * neighborColor;
         accumCoefficient += normalWeight;
     }
 
-    //avgIntensity /= accumCoefficient;
-    float neighborNum_float = float(currentNeighborNum);
-    avgIntensity /= neighborNum_float;
+    // 1-ring neighborhood 평균 산출 시, 기준점도 포함
+    avgIntensity += currentColor;
+    accumCoefficient += 1;
+    avgIntensity /= accumCoefficient;
+
+    //float neighborNum_float = float(currentNeighborNum);
+    //avgIntensity /= neighborNum_float;
 
     // *** 평균과의 차 구하고, 내보내기
     unsharpVector = currentColor - avgIntensity;
