@@ -45,6 +45,8 @@ int Object::initResource(GLuint programID)
     texLocation = glGetUniformLocation(programID, "neighborNum");
     tex2Location = glGetUniformLocation(programID, "neighborIdxList");
     tex3Location = glGetUniformLocation(programID, "accumNeighborNum");
+    tex4Location = glGetUniformLocation(programID, "neighborPos");
+    tex5Location = glGetUniformLocation(programID, "neighborNormal");
 
     return 1;
 }
@@ -81,7 +83,7 @@ void Object::draw(GLint uniformMvp, const glm::mat4 mvp, const int TEXTURESIZE)
 
     // Texture
     // (1) : 이웃의 개수
-    GLuint neighborNumTexID;
+    //GLuint neighborNumTexID;
     glGenTextures(1, &neighborNumTexID);
     glBindTexture(GL_TEXTURE_2D, neighborNumTexID);
 
@@ -96,7 +98,7 @@ void Object::draw(GLint uniformMvp, const glm::mat4 mvp, const int TEXTURESIZE)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, neighborNum);
 
     // (2) : 이웃의 인덱스
-    GLuint neighborNumIdxTexID;
+    //GLuint neighborNumIdxTexID;
     glGenTextures(1, &neighborNumIdxTexID);
     glBindTexture(GL_TEXTURE_2D, neighborNumIdxTexID);
 
@@ -121,6 +123,32 @@ void Object::draw(GLint uniformMvp, const glm::mat4 mvp, const int TEXTURESIZE)
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32I, TEXTURESIZE, TEXTURESIZE, 0, GL_RED_INTEGER, GL_INT, accumNeighborNum);
 
+    // (4) : 이웃 접근용 - 점의 위치
+    //GLuint neighborPosTexID;
+    glGenTextures(1, &neighborPosTexID);
+    glBindTexture(GL_TEXTURE_2D, neighborPosTexID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, neighborPos);
+    
+    // (5) : 이웃 접근용 - 점의 normal
+    //GLuint neighborNormalTexID;
+    glGenTextures(1, &neighborNormalTexID);
+    glBindTexture(GL_TEXTURE_2D, neighborNormalTexID);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURESIZE, TEXTURESIZE, 0, GL_RGB, GL_FLOAT, neighborNormal);
+
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer); // 추가한 element 코드
 
     glActiveTexture(GL_TEXTURE0);
@@ -134,6 +162,14 @@ void Object::draw(GLint uniformMvp, const glm::mat4 mvp, const int TEXTURESIZE)
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, accumNeighborNumTexID);
     glUniform1i(tex3Location, 2);
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, neighborPosTexID);
+    glUniform1i(tex4Location, 3);
+
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, neighborNormalTexID);
+    glUniform1i(tex5Location, 4);
 
     glDrawElements(
         GL_TRIANGLES,
@@ -165,6 +201,8 @@ void Object::deleteBuffers()
     glDeleteTextures(1, &neighborNumTexID);
     glDeleteTextures(1, &neighborNumIdxTexID);
     glDeleteTextures(1, &accumNeighborNumTexID);
+    glDeleteTextures(1, &neighborPosTexID);
+    glDeleteTextures(1, &neighborNormalTexID);
 }
 
 glm::mat4 Object::boundingBox(const point3 destinationCent, const float scalingFactor)
@@ -588,8 +626,10 @@ bool Object::loadObjMtl(const char* objName, const char* mtlName)
     int vertexPosNum = vertexPos.size();
     //neighborNum.assign(verticesNum, 0);
     int neighborSize;
+    // 텍스처 저장용 변수들
     int tempNeighborIdx = 0;
     int tempNormalIdx = 0;
+    int tempPosIdx = 0;
 
     for (int i = 0; i < vertexPosNum; ++i)
     {
@@ -621,6 +661,22 @@ bool Object::loadObjMtl(const char* objName, const char* mtlName)
 
         else
             accumNeighborNum[i] = accumNeighborNum[i - 1] + neighborNum[i - 1];
+
+        // 위치 텍스처
+        neighborPos[tempPosIdx] = vertexPos[i].x;
+        ++tempPosIdx;
+        neighborPos[tempPosIdx] = vertexPos[i].y;
+        ++tempPosIdx;
+        neighborPos[tempPosIdx] = vertexPos[i].z;
+        ++tempPosIdx;
+
+        // normal 텍스처
+        neighborNormal[tempNormalIdx] = normal[i].x;
+        ++tempNormalIdx;
+        neighborNormal[tempNormalIdx] = normal[i].y;
+        ++tempNormalIdx;
+        neighborNormal[tempNormalIdx] = normal[i].z;
+        ++tempNormalIdx;
     }
 
     fclose(fp);

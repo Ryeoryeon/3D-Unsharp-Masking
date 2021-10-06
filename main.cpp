@@ -21,13 +21,15 @@ const int TEXTURESIZE = 1024;
 std::vector<glm::vec3> lightPos = { glm::vec3(0, 5, 5) , glm::vec3(4, 4, 0), glm::vec3(3, 1, 3), glm::vec3(-2, 5, 3)};
 
 // timer 함수 연관
-float angle; // 회전 각도
+float angleSize = 5.0f; // 회전 단위
+float currentAngle; // 현재 각도
 int lightIdx = 0; // 조명의 번호
 
 Object firstObj;
 Object secondObj;
 Object thirdObj;
 
+//std::vector<int> activateObj = { 1, 1, 1 }; // obj 활성화 변수
 std::vector<int> activateObj = { 1, 1, 1 }; // obj 활성화 변수
 
 glm::mat4 Projection;
@@ -58,16 +60,18 @@ void timer(int value)
     static int outputIdx = -1; // 빈 화면 건너뛰기
 
     glutPostRedisplay(); // 윈도우를 다시 그리도록 요청하는 함수
-    glutTimerFunc(45, timer, 0);
-    angle += glm::radians(45.0f);
+    glutTimerFunc(angleSize, timer, 0);
+    currentAngle += glm::radians(angleSize);
 
     ++outputIdx;
 
-    if (outputIdx != 0 && outputIdx <= 8)
+    int stepSize = 360 / angleSize;
+
+    if (outputIdx != 0 && outputIdx <= stepSize)
         openglToPngSave(outputIdx - 1);
 
-    // 360도 회전이 끝나면 다음 조명으로 변경 (0~11, 12~23..)
-    else if (outputIdx != 0 && outputIdx % 8 == 0)
+    // 360도 회전이 끝나면 다음 조명으로 변경
+    else if (outputIdx != 0 && outputIdx % stepSize == 0)
     {
         ++lightIdx;
         outputIdx = 0;
@@ -118,6 +122,7 @@ void init()
     //const char* thirdMtlName = "blue.mtl";
 
     programID = LoadShaders("1ringNeiborhood_bilateral.vertexshader", "1ringNeiborhood.fragmentshader");
+    //programID = LoadShaders("1ringNeiborhood.vertexshader", "1ringNeiborhood.fragmentshader");
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -151,6 +156,7 @@ void init()
 void mydisplay()
 {
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
+    //glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     transform();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -187,7 +193,7 @@ void myreshape(int width, int height)
 void transform()
 {
     Model = glm::mat4(1.0f);
-    Model = glm::rotate(Model, angle, glm::vec3(0, 1, 0));
+    Model = glm::rotate(Model, currentAngle, glm::vec3(0, 1, 0));
     mvp = Projection * View * Model;
 
     GLuint MatrixID = glGetUniformLocation(programID, "MVP");

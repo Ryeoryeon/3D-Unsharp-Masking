@@ -58,8 +58,9 @@ class Object
     private:
         GLuint diffuseID, ambientID, specularID, NormalID, vertexBuffer, elementBuffer;
         // texture
-        GLuint neighborNumTexID, neighborNumIdxTexID, accumNeighborNumTexID;
-        GLuint texLocation, tex2Location, tex3Location;
+        GLuint neighborNumTexID, neighborNumIdxTexID, accumNeighborNumTexID, neighborPosTexID, neighborNormalTexID;
+        GLuint texLocation, tex2Location, tex3Location, tex4Location, tex5Location;
+
         // vertex
         std::vector<unsigned int> vertexPosIndices;
         std::vector<point3> vertexPos;
@@ -73,6 +74,8 @@ class Object
         GLint neighborNum[1024 * 1024] = { 0, }; // 각 점에 대한 이웃의 개수를 저장하는 텍스처
         GLint neighborIdxList[1024 * 1024] = { 0, }; // 이웃의 인덱스가 연속적으로 저장된 텍스처
         GLint accumNeighborNum[1024 * 1024] = { 0, }; // 누적된 이웃의 개수
+        GLfloat neighborPos[1024 * 1024] = { 0, }; // 이웃 접근용 : 점의 위치
+        GLfloat neighborNormal[1024 * 1024] = { 0, }; // 이웃 접근용 : 점의 normal
 
     public:
         //functions
